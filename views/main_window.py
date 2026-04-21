@@ -2,7 +2,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QMainWindow, QTabWidget
 from .cards import TabCards
-from locales import get_tab_cards_name
+from .nomenclature import TabNomenclature
+from .structure import TabStructure
+from locales import get_tab_cards_name, get_tab_nomenclature_name, get_tab_structure_name
 
 
 class MainWindow(QMainWindow):
@@ -27,6 +29,12 @@ class MainWindow(QMainWindow):
         # щоб зі зростанням проєкту код не збирався в одному каталозі.
         cards_tab = TabCards(self)
         self.tabs.addTab(cards_tab, get_tab_cards_name())
+
+        nomenclature_tab = TabNomenclature(self)
+        self.tabs.addTab(nomenclature_tab, get_tab_nomenclature_name())
+
+        structure_tab = TabStructure(self)
+        self.tabs.addTab(structure_tab, get_tab_structure_name())
 
     def _configure_window(self):
         """Налаштовує стартову геометрію головного вікна відносно поточного екрана."""

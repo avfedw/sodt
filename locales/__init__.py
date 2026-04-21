@@ -38,6 +38,17 @@ from .cards.tab_cards import get_tab_cards_table_headers as _cards_table_headers
 from .cards.tab_cards import get_tab_cards_admission_headers as _cards_admission_headers
 from .cards.tab_cards import name_for as _cards_name_for
 from .cards.tab_cards import validation_error_title_for as _cards_validation_error_title_for
+from .nomenclature.tab_nomenclature import name_for as _nomenclature_name_for
+from .structure.tab_structure import add_button_text_for as _structure_add_button_text_for
+from .structure.tab_structure import add_child_button_text_for as _structure_add_child_button_text_for
+from .structure.tab_structure import delete_button_text_for as _structure_delete_button_text_for
+from .structure.tab_structure import dialog_texts_for as _structure_dialog_texts_for
+from .structure.tab_structure import edit_button_text_for as _structure_edit_button_text_for
+from .structure.tab_structure import empty_state_text_for as _structure_empty_state_text_for
+from .structure.tab_structure import headers_for as _structure_headers_for
+from .structure.tab_structure import name_for as _structure_name_for
+from .structure.tab_structure import type_labels_for as _structure_type_labels_for
+from .structure.tab_structure import validation_error_title_for as _structure_validation_error_title_for
 
 
 def get_tab_cards_name() -> str:
@@ -114,3 +125,47 @@ def get_tab_cards_edit_dialog_texts() -> dict:
 
 def get_tab_cards_validation_error_title() -> str:
     return _cards_validation_error_title_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_name() -> str:
+    return _nomenclature_name_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_name() -> str:
+    return _structure_name_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_add_button_text() -> str:
+    return _structure_add_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_add_child_button_text() -> str:
+    return _structure_add_child_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_edit_button_text() -> str:
+    return _structure_edit_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_delete_button_text() -> str:
+    return _structure_delete_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_empty_state_text() -> str:
+    return _structure_empty_state_text_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_headers() -> list[str]:
+    return _structure_headers_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_validation_error_title() -> str:
+    return _structure_validation_error_title_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_dialog_texts() -> dict:
+    return _structure_dialog_texts_for(CURRENT_LOCALE)
+
+
+def get_tab_structure_type_labels() -> dict[str, str]:
+    return _structure_type_labels_for(CURRENT_LOCALE)

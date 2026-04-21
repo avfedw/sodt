@@ -100,7 +100,9 @@ class TabCards(QWidget):
         self.edit_admission_button.clicked.connect(self._open_edit_admission_dialog)
         admission_buttons.addWidget(self.edit_admission_button)
         admission_layout.addLayout(admission_buttons)
-        lower_tables_layout.addLayout(admission_layout)
+        # Таблиця допусків має більше колонок і довші заголовки,
+        # тому віддаємо їй більшу частину горизонтального простору.
+        lower_tables_layout.addLayout(admission_layout, 5)
 
         access_layout = QVBoxLayout()
         access_layout.addWidget(QLabel(self.viewmodel.access_table_title, self))
@@ -127,7 +129,7 @@ class TabCards(QWidget):
         self.edit_access_button.clicked.connect(self._open_edit_access_dialog)
         access_buttons.addWidget(self.edit_access_button)
         access_layout.addLayout(access_buttons)
-        lower_tables_layout.addLayout(access_layout)
+        lower_tables_layout.addLayout(access_layout, 3)
 
         table_layout.addLayout(lower_tables_layout)
         main_layout.addLayout(table_layout)
@@ -151,6 +153,16 @@ class TabCards(QWidget):
         self._apply_table_widths(table, width_weights)
 
     def _apply_table_visual_style(self, table: QTableWidget):
+        # Для щільніших таблиць окремо зменшуємо шрифт у клітинках і заголовках,
+        # не впливаючи на решту інтерфейсу застосунку.
+        table_font = table.font()
+        table_font.setPointSize(10)
+        table.setFont(table_font)
+
+        header_font = table.horizontalHeader().font()
+        header_font.setPointSize(9)
+        table.horizontalHeader().setFont(header_font)
+
         table.setShowGrid(True)
         table.setStyleSheet(TABLE_GRID_STYLESHEET)
 
