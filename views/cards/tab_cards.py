@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton, QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QLabel, QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton, QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from dialogs.cards import AccessDialog, AddCardDialog, AdmissionDialog, EditCardDialog
 from viewmodels.cards import TabCardsViewModel
@@ -10,6 +10,12 @@ from .presentation import DOCUMENT_EVENT_COLUMN, STATUS_COLUMN, TABLE_GRID_STYLE
 
 class TabCards(QWidget):
     """Віджет вкладки Cards. Тут розміщується UI та зв'язок із ViewModel."""
+
+    _FILTER_ONLY_AVAILABLE = 0
+    _FILTER_ALL = 1
+    _FILTER_UNAVAILABLE = 2
+    _FILTER_FOR_CANCELLATION = 3
+    _FILTER_FOR_DESTRUCTION = 4
 
     def __init__(self, parent=None, viewmodel: TabCardsViewModel = None):
         super().__init__(parent)
@@ -34,6 +40,12 @@ class TabCards(QWidget):
         add_card_button.setFixedWidth(100)
         add_card_button.clicked.connect(self._open_add_card_dialog)
         button_layout.addWidget(add_card_button)
+
+        self.cards_visibility_filter = QComboBox(self)
+        self.cards_visibility_filter.addItems(self.viewmodel.cards_visibility_filter_options)
+        self.cards_visibility_filter.setCurrentIndex(0)
+        self.cards_visibility_filter.currentIndexChanged.connect(self._on_cards_visibility_filter_changed)
+        button_layout.addWidget(self.cards_visibility_filter)
 
         main_layout.addLayout(button_layout)
 
@@ -132,6 +144,9 @@ class TabCards(QWidget):
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+        # Даємо заголовкам запас по висоті, щоб дворядкові підписи вміщалися повністю.
+        header.setFixedHeight(44)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._apply_table_widths(table, width_weights)
 
@@ -201,8 +216,39 @@ class TabCards(QWidget):
             filter_input.setFixedWidth(self.cards_table.columnWidth(column_index))
 
     def _load_cards(self):
-        self._cards = self.viewmodel.get_cards()
+        all_cards = self.viewmodel.get_cards()
+        self._cards = [card for card in all_cards if self._should_show_card(card)]
         self._refresh_cards_table()
+
+    def _should_show_card(self, card) -> bool:
+        current_filter_index = self.cards_visibility_filter.currentIndex()
+        is_missing = card.lifecycle_state in {"sent", "destroyed"}
+
+        # Під відсутніми картками маються на увазі надіслані та знищені,
+        # а окремі службові режими показують лише картки з відповідним похідним статусом.
+        if current_filter_index == self._FILTER_ALL:
+            return True
+        if current_filter_index == self._FILTER_UNAVAILABLE:
+            return is_missing
+        if current_filter_index == self._FILTER_FOR_CANCELLATION:
+            return card.derived_workflow_status.startswith("на скасування")
+        if current_filter_index == self._FILTER_FOR_DESTRUCTION:
+            return card.derived_workflow_status.startswith("на знищення")
+        return not is_missing
+
+    def _on_cards_visibility_filter_changed(self, _index: int):
+        self._apply_default_sort_for_filter()
+        self._load_cards()
+
+    def _apply_default_sort_for_filter(self):
+        current_filter_index = self.cards_visibility_filter.currentIndex()
+        if current_filter_index in {self._FILTER_FOR_CANCELLATION, self._FILTER_FOR_DESTRUCTION}:
+            # Для службових режимів сортуємо не за звичайними колонками,
+            # а за найближчою датою потрібної дії: спочатку найтерміновіші картки.
+            self._sorted_column = STATUS_COLUMN
+            self._sort_order = Qt.SortOrder.AscendingOrder
+            if hasattr(self, "cards_table"):
+                self.cards_table.horizontalHeader().setSortIndicator(self._sorted_column, self._sort_order)
 
     def _reload_all_tables(self, card_id: int | None = None):
         # Після змін у нижніх таблицях повністю оновлюємо верхню,
@@ -285,6 +331,21 @@ class TabCards(QWidget):
         return card_row_colors(card)
 
     def _sort_cards(self):
+        current_filter_index = self.cards_visibility_filter.currentIndex()
+        if current_filter_index == self._FILTER_FOR_CANCELLATION:
+            self._cards.sort(
+                key=self._planned_cancellation_sort_key,
+                reverse=False,
+            )
+            return
+
+        if current_filter_index == self._FILTER_FOR_DESTRUCTION:
+            self._cards.sort(
+                key=self._planned_destruction_sort_key,
+                reverse=False,
+            )
+            return
+
         # Для чисел, дат і тексту використовуємо різні ключі,
         # щоб сортування поводилося природно для користувача.
         sort_keys = {
@@ -303,6 +364,35 @@ class TabCards(QWidget):
             key=sort_key,
             reverse=self._sort_order == Qt.SortOrder.DescendingOrder,
         )
+
+    def _planned_cancellation_sort_key(self, card):
+        return self._derived_deadline_sort_key(card.access_revoked_date, months=6)
+
+    def _planned_destruction_sort_key(self, card):
+        return self._derived_deadline_sort_key(card.admission_revoked_date, years=5)
+
+    def _derived_deadline_sort_key(self, source_date: str, years: int = 0, months: int = 0):
+        if not source_date:
+            return (1, datetime.max)
+
+        parsed_date = datetime.strptime(source_date, "%d.%m.%Y")
+        target_year = parsed_date.year + years
+        target_month = parsed_date.month + months
+
+        while target_month > 12:
+            target_year += 1
+            target_month -= 12
+
+        while target_month < 1:
+            target_year -= 1
+            target_month += 12
+
+        day = parsed_date.day
+        while True:
+            try:
+                return (0, datetime(target_year, target_month, day))
+            except ValueError:
+                day -= 1
 
     def _sort_cards_by_column(self, column_index: int):
         if column_index == self._sorted_column:

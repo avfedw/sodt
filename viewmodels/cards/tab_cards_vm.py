@@ -34,12 +34,14 @@ class TabCardsViewModel:
                 get_tab_cards_edit_dialog_texts,
                 get_tab_cards_name,
                 get_tab_cards_table_headers,
+                get_tab_cards_visibility_filter_options,
                 get_tab_cards_validation_error_title,
             )
 
             self._apply_text_bundle(
                 title=get_tab_cards_name(),
                 add_button_text=get_tab_cards_add_button_text(),
+                cards_visibility_filter_options=get_tab_cards_visibility_filter_options(),
                 access_table_title=get_tab_cards_access_name(),
                 add_access_button_text=get_tab_cards_access_add_button_text(),
                 edit_access_button_text=get_tab_cards_access_edit_button_text(),
@@ -77,6 +79,7 @@ class TabCardsViewModel:
         return {
             "title": "Cards",
             "add_button_text": "Add",
+            "cards_visibility_filter_options": ["only available", "all", "unavailable"],
             "access_table_title": "Access",
             "add_access_button_text": "Add access",
             "edit_access_button_text": "Edit",

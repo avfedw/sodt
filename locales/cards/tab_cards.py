@@ -5,12 +5,26 @@ tab_Cards = {
     "uk": {
         "name": "Картки",
         "add_button": "Додати картку",
+        "cards_visibility_filter": [
+            "Тільки наявні",
+            "Всі",
+            "Відсутні",
+            "На скасування",
+            "На знищення",
+        ],
         "edit_button": "Редагувати",
         "validation_error_title": "Помилка перевірки",
     },
     "en": {
         "name": "Cards",
         "add_button": "Add card",
+        "cards_visibility_filter": [
+            "only available",
+            "all",
+            "unavailable",
+            "For cancellation",
+            "For destruction",
+        ],
         "edit_button": "Edit",
         "validation_error_title": "Validation error",
     },
@@ -71,20 +85,20 @@ tab_Cards_admission_dialog = {
 }
 
 tab_Cards_table_headers = {
-    "uk": ["Літера - номер", "Дата", "Прізвище", "Ім'я", "По батькові", "Форма", "Документ / подія", "Статус", "Примітка"],
-    "en": ["Letter - Number", "Date", "Surname", "Name", "Patronymic", "Form", "Document / Event", "Status", "Note"],
+    "uk": ["Літера -\nномер", "Дата", "Прізвище", "Ім'я", "По\nбатькові", "Форма", "Документ /\nподія", "Статус", "Примітка"],
+    "en": ["Letter -\nNumber", "Date", "Surname", "Name", "Patronymic", "Form", "Document /\nEvent", "Status", "Note"],
 }
 
 # Заголовки таблиць тримаємо окремо від решти текстів,
 # бо вони часто використовуються незалежно від діалогів.
 tab_Cards_admission_headers = {
-    "uk": ["Номер супровіду", "Дата супровіду", "Номер відповіді", "Дата відповіді", "Номер розпорядження", "Дата розпорядження", "Форма допуску", "Статус"],
-    "en": ["Escort number", "Escort date", "Response number", "Response date", "Order number", "Order date", "Admission Form", "Status"],
+    "uk": ["Номер\nсупровіду", "Дата\nсупровіду", "Номер\nвідповіді", "Дата\nвідповіді", "Номер\nрозпорядження", "Дата\nрозпорядження", "Форма\nдопуску", "Статус"],
+    "en": ["Escort\nnumber", "Escort\ndate", "Response\nnumber", "Response\ndate", "Order\nnumber", "Order\ndate", "Admission\nForm", "Status"],
 }
 
 tab_Cards_access_headers = {
-    "uk": ["Дата", "Номер наказу", "Доступ", "Статус"],
-    "en": ["Date", "Order number", "Access", "Status"],
+    "uk": ["Дата", "Номер\nнаказу", "Доступ", "Статус"],
+    "en": ["Date", "Order\nnumber", "Access", "Status"],
 }
 
 tab_Cards_access_dialog = {
@@ -294,6 +308,10 @@ def add_button_text_for(locale: str) -> str:
 
 def edit_button_text_for(locale: str) -> str:
     return tab_Cards.get(locale, tab_Cards["en"])["edit_button"]
+
+
+def cards_visibility_filter_options_for(locale: str) -> list[str]:
+    return tab_Cards.get(locale, tab_Cards["en"])["cards_visibility_filter"]
 
 
 def admission_add_button_text_for(locale: str) -> str:

@@ -21,6 +21,7 @@ def set_locale(lang: str) -> None:
 
 # Допоміжні функції вкладок імпортуються ліниво, щоб цей файл залишався мінімальним.
 from .cards.tab_cards import add_button_text_for as _cards_add_button_text_for
+from .cards.tab_cards import cards_visibility_filter_options_for as _cards_visibility_filter_options_for
 from .cards.tab_cards import access_add_button_text_for as _cards_access_add_button_text_for
 from .cards.tab_cards import access_dialog_texts_for as _cards_access_dialog_texts_for
 from .cards.tab_cards import access_edit_button_text_for as _cards_access_edit_button_text_for
@@ -51,6 +52,10 @@ def get_tab_cards_add_button_text() -> str:
 
 def get_tab_cards_edit_button_text() -> str:
     return _cards_edit_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_cards_visibility_filter_options() -> list[str]:
+    return _cards_visibility_filter_options_for(CURRENT_LOCALE)
 
 
 def get_tab_cards_admission_add_button_text() -> str:
