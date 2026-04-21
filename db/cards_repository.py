@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 import sqlite3
 
+from .cards_state import AdmissionState, AccessState, build_access_state_by_card_id, build_admission_state_by_card_id, derive_workflow_status
+
 
 _UKRAINIAN_LETTERS = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯабвгґдеєжзиіїйклмнопрстуфхцчшщьюя"
 _UKRAINIAN_NAME_PATTERN = re.compile(rf"^[{_UKRAINIAN_LETTERS}'’ ]+$")
@@ -238,15 +240,21 @@ class CardsRepository:
     """Репозиторій для читання та підготовки таблиці карток."""
 
     def __init__(self, db_path: Path | None = None):
+        # За замовчуванням працюємо з основною SQLite-базою проєкту,
+        # але шлях можна підмінити в тестах або тимчасових сценаріях перевірки.
         self.db_path = db_path or Path(__file__).resolve().parent / "sodt.sqlite3"
         self._ensure_schema()
 
     def _connect(self) -> sqlite3.Connection:
+        """Створює з'єднання з Row-рядками для доступу до полів за назвами."""
+
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         return connection
 
     def _ensure_schema(self) -> None:
+        """Перевіряє структуру таблиць і за потреби створює або оновлює її."""
+
         with self._connect() as connection:
             table_exists = connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cards'"
@@ -257,6 +265,8 @@ class CardsRepository:
                     row["name"]
                     for row in connection.execute("PRAGMA table_info(cards)").fetchall()
                 ]
+                # Для локального десктопного застосунку тут простіше перестворити таблицю,
+                # ніж підтримувати складні міграції для кожної проміжної версії схеми.
                 if columns != _EXPECTED_CARD_COLUMNS:
                     connection.execute("DROP TABLE cards")
 
@@ -328,6 +338,8 @@ class CardsRepository:
                     row["name"]
                     for row in connection.execute("PRAGMA table_info(accesses)").fetchall()
                 ]
+                # Окремо підтримуємо м'яке оновлення старої схеми, де ще не було access_type,
+                # щоб існуючу локальну базу можна було підняти без ручного втручання.
                 if access_columns == ["id", "card_id", "access_date", "order_number", "status"]:
                     connection.execute(
                         "ALTER TABLE accesses ADD COLUMN access_type TEXT NOT NULL DEFAULT 'Т'"
@@ -354,6 +366,8 @@ class CardsRepository:
             )
 
     def list_cards(self) -> list[CardRecord]:
+        """Повертає всі картки разом із похідним станом допусків і доступів."""
+
         with self._connect() as connection:
             rows = connection.execute("SELECT * FROM cards ORDER BY id").fetchall()
             admission_rows = connection.execute(
@@ -363,192 +377,31 @@ class CardsRepository:
                 "SELECT id, card_id, status, access_date FROM accesses"
             ).fetchall()
 
-        admission_state_by_card_id = self._build_admission_state_by_card_id(admission_rows)
-        access_state_by_card_id = self._build_access_state_by_card_id(access_rows)
+        admission_state_by_card_id = build_admission_state_by_card_id(admission_rows)
+        access_state_by_card_id = build_access_state_by_card_id(access_rows)
 
+        # Похідний стан розраховується пакетно для всіх карток,
+        # щоб доменна логіка залишалась в одному місці й не дублювалась по циклу.
         return [
             self._build_card_record_from_row(
                 row,
-                form_override=admission_state_by_card_id.get(row["id"], (row["form"], False, False, "", ""))[0],
-                has_active_admission=admission_state_by_card_id.get(row["id"], (row["form"], False, False, "", ""))[1],
-                admission_revoked_after_grant=admission_state_by_card_id.get(row["id"], (row["form"], False, False, "", ""))[2],
-                admission_revoked_date=admission_state_by_card_id.get(row["id"], (row["form"], False, False, "", ""))[3],
-                reissue_date=admission_state_by_card_id.get(row["id"], (row["form"], False, False, "", ""))[4],
-                has_active_access=access_state_by_card_id.get(row["id"], (False, False, ""))[0],
-                access_revoked_after_grant=access_state_by_card_id.get(row["id"], (False, False, ""))[1],
-                access_revoked_date=access_state_by_card_id.get(row["id"], (False, False, ""))[2],
+                admission_state=admission_state_by_card_id.get(row["id"], AdmissionState(form=row["form"])),
+                access_state=access_state_by_card_id.get(row["id"], AccessState()),
             )
             for row in rows
         ]
 
-    def _build_admission_state_by_card_id(self, rows: list[sqlite3.Row]) -> dict[int, tuple[str, bool, bool, str, str]]:
-        admission_state_by_card_id = {}
-        granted_statuses = {"надано", "granted"}
-        revoked_statuses = {"скасовано", "revoked"}
-        active_sequences_by_card_id: dict[int, list[tuple[int, str]]] = {}
-
-        sorted_rows = sorted(
-            rows,
-            key=lambda row: (
-                self._admission_order_sort_key(row["order_date"]),
-                row["id"],
-            ),
-        )
-
-        for row in sorted_rows:
-            card_id = row["card_id"]
-            current_form, has_active_admission, revoked_after_grant, revoked_date, reissue_date = admission_state_by_card_id.get(card_id, ("", False, False, "", ""))
-            admission_status = row["admission_status"]
-
-            if admission_status in granted_statuses:
-                form_level = self._admission_form_level(row["admission_form"])
-                current_sequence = active_sequences_by_card_id.get(card_id, [])
-                if form_level is not None:
-                    current_sequence.append((form_level, row["order_date"]))
-                active_sequences_by_card_id[card_id] = current_sequence
-                admission_state_by_card_id[card_id] = (
-                    row["admission_form"],
-                    True,
-                    False,
-                    "",
-                    self._build_reissue_date(current_sequence),
-                )
-                continue
-
-            if admission_status in revoked_statuses and current_form:
-                active_sequences_by_card_id[card_id] = []
-                admission_state_by_card_id[card_id] = (current_form, False, True, row["order_date"], "")
-
-        return admission_state_by_card_id
-
-    def _admission_form_level(self, value: str) -> int | None:
-        normalized_value = value.strip().upper().replace("Ф", "F")
-        if normalized_value in {"F-1", "F-2", "F-3"}:
-            return int(normalized_value[-1])
-        return None
-
-    def _build_reissue_date(self, active_sequence: list[tuple[int, str]]) -> str:
-        if not active_sequence:
-            return ""
-
-        current_level, current_date = active_sequence[-1]
-        duration_years = {1: 5, 2: 7, 3: 10}.get(current_level)
-        if duration_years is None:
-            return ""
-
-        base_date = current_date
-        if current_level == 2:
-            for form_level, grant_date in active_sequence:
-                if form_level == 1:
-                    base_date = grant_date
-                    break
-        elif current_level == 3:
-            for form_level, grant_date in active_sequence:
-                if form_level == 2:
-                    base_date = grant_date
-                    break
-
-        return self._shift_date(base_date, years=duration_years)
-
-    def _build_access_state_by_card_id(self, rows: list[sqlite3.Row]) -> dict[int, tuple[bool, bool, str]]:
-        access_state_by_card_id = {}
-        granted_statuses = {"надано", "granted"}
-        revoked_statuses = {"скасовано", "revoked"}
-
-        sorted_rows = sorted(
-            rows,
-            key=lambda row: (
-                self._access_sort_key(row["access_date"]),
-                row["id"],
-            ),
-        )
-
-        for row in sorted_rows:
-            current_active, revoked_after_grant, revoked_date = access_state_by_card_id.get(row["card_id"], (False, False, ""))
-            if row["status"] in granted_statuses:
-                access_state_by_card_id[row["card_id"]] = (True, False, "")
-                continue
-
-            if row["status"] in revoked_statuses and current_active:
-                access_state_by_card_id[row["card_id"]] = (False, True, row["access_date"])
-                continue
-
-            if row["status"] in revoked_statuses:
-                access_state_by_card_id[row["card_id"]] = (False, revoked_after_grant, revoked_date)
-
-        return access_state_by_card_id
-
-    def _derive_workflow_status(
-        self,
-        lifecycle_state: str,
-        admission_revoked_after_grant: bool,
-        admission_revoked_date: str,
-        has_active_admission: bool,
-        has_active_access: bool,
-        reissue_date: str,
-        access_revoked_after_grant: bool,
-        access_revoked_date: str,
-    ) -> str:
-        if lifecycle_state == "destroyed":
-            return "знищено"
-        if lifecycle_state == "sent":
-            return "відправлено"
-        if admission_revoked_after_grant and admission_revoked_date:
-            destruction_date = self._shift_date(admission_revoked_date, years=5)
-            return f"на знищення\nДата знищення:\n{destruction_date}"
-        if access_revoked_after_grant and access_revoked_date:
-            cancellation_date = self._shift_date(access_revoked_date, months=6)
-            return f"на скасування\nДата скасування:\n{cancellation_date}"
-        if has_active_admission and has_active_access and reissue_date:
-            return f"переоформлення\nДата переоформлення:\n{reissue_date}"
-        return ""
-
-    def _admission_order_sort_key(self, value: str) -> tuple[int, datetime]:
-        if not value:
-            return (1, datetime.min)
-
-        try:
-            return (0, datetime.strptime(value, "%d.%m.%Y"))
-        except ValueError:
-            return (1, datetime.min)
-
-    def _access_sort_key(self, value: str) -> tuple[int, datetime]:
-        if not value:
-            return (1, datetime.min)
-
-        try:
-            return (0, datetime.strptime(value, "%d.%m.%Y"))
-        except ValueError:
-            return (1, datetime.min)
-
-    def _shift_date(self, value: str, years: int = 0, months: int = 0) -> str:
-        parsed_date = datetime.strptime(value, "%d.%m.%Y").date()
-        target_year = parsed_date.year + years
-        target_month = parsed_date.month + months
-
-        while target_month > 12:
-            target_year += 1
-            target_month -= 12
-
-        while target_month < 1:
-            target_year -= 1
-            target_month += 12
-
-        day = parsed_date.day
-        while True:
-            try:
-                shifted_date = date(target_year, target_month, day)
-                return shifted_date.strftime("%d.%m.%Y")
-            except ValueError:
-                day -= 1
-
     def create_card(self, surname: str, name: str, patronymic: str) -> CardRecord:
+        """Створює нову картку з автоматичним присвоєнням літери та номера."""
+
         normalized_surname = self._normalize_name_part(surname, "Прізвище")
         normalized_name = self._normalize_name_part(name, "Ім'я")
         normalized_patronymic = self._normalize_name_part(patronymic, "По батькові")
         letter = self._build_letter(normalized_surname)
 
         with self._connect() as connection:
+            # Номер у межах літери видається послідовно, щоб користувачеві
+            # не потрібно було вручну шукати наступне вільне значення.
             next_number = self._get_next_number_for_letter(connection, letter)
             cursor = connection.execute(
                 """
@@ -598,11 +451,15 @@ class CardsRepository:
                 "UPDATE cards SET relation_group_id = ? WHERE id = ?",
                 (card_id, card_id),
             )
+            # Перша картка в групі пов'язується сама з собою,
+            # а надалі цей ключ використовується для історії змін прізвища та відправлень.
             row = connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
 
         return self._build_card_record_from_row(row)
 
     def list_accesses(self, card_id: int) -> list[AccessRecord]:
+        """Повертає історію доступів для конкретної картки."""
+
         with self._connect() as connection:
             self._ensure_card_exists(connection, card_id)
             rows = connection.execute(
@@ -613,6 +470,8 @@ class CardsRepository:
         return [self._build_access_record_from_row(row) for row in rows]
 
     def create_access(self, card_id: int, access_date: str, order_number: str, access_type: str, status: str) -> AccessRecord:
+        """Створює новий запис доступу після нормалізації та валідації полів."""
+
         normalized_access_date, normalized_order_number, normalized_access_type, normalized_status = self._normalize_access_fields(
             access_date,
             order_number,
@@ -637,6 +496,8 @@ class CardsRepository:
         return self._build_access_record_from_row(row)
 
     def update_access(self, access_id: int, access_date: str, order_number: str, access_type: str, status: str) -> AccessRecord:
+        """Оновлює наявний запис доступу й повертає його актуальний стан."""
+
         normalized_access_date, normalized_order_number, normalized_access_type, normalized_status = self._normalize_access_fields(
             access_date,
             order_number,
@@ -671,6 +532,8 @@ class CardsRepository:
         return self._build_access_record_from_row(updated_row)
 
     def list_admissions(self, card_id: int) -> list[AdmissionRecord]:
+        """Повертає історію допусків для конкретної картки."""
+
         with self._connect() as connection:
             self._ensure_card_exists(connection, card_id)
             rows = connection.execute(
@@ -687,6 +550,8 @@ class CardsRepository:
         escort_date: str,
         admission_form: str,
     ) -> AdmissionRecord:
+        """Створює первинний запис допуску для картки."""
+
         normalized_values = self._normalize_admission_fields(
             escort_number=escort_number,
             escort_date=escort_date,
@@ -737,6 +602,8 @@ class CardsRepository:
         admission_form: str,
         admission_status: str,
     ) -> AdmissionRecord:
+        """Доповнює або змінює запис допуску службовими реквізитами та статусом."""
+
         normalized_values = self._normalize_admission_fields(
             escort_number=escort_number,
             escort_date=escort_date,
@@ -793,6 +660,8 @@ class CardsRepository:
         document_target: str,
         user_note: str,
     ) -> CardRecord:
+        """Оновлює картку або створює нову пов'язану картку при зміні літери прізвища."""
+
         normalized_surname = self._normalize_name_part(surname, "Прізвище")
         normalized_name = self._normalize_name_part(name, "Ім'я")
         normalized_patronymic = self._normalize_name_part(patronymic, "По батькові")
@@ -822,6 +691,8 @@ class CardsRepository:
             surname_changed = old_surname != normalized_surname
 
             if new_letter == old_letter:
+                # Поки літера лишається тією самою, картку можна виправити на місці
+                # без створення додаткового запису в пов'язаній групі.
                 self._ensure_card_number_is_unique(connection, new_letter, normalized_number, card_id)
                 connection.execute(
                     """
@@ -864,6 +735,8 @@ class CardsRepository:
 
                 return self._get_card_record_by_id(connection, card_id)
 
+            # Якщо прізвище перейшло на іншу літеру, історично зберігаємо стару картку,
+            # а поточний стан переносимо в новий запис з новим кодом.
             new_number = str(self._get_next_number_for_letter(connection, new_letter))
             old_card_code = self._format_card_code(old_letter, old_number)
             new_card_code = self._format_card_code(new_letter, new_number)
@@ -956,6 +829,8 @@ class CardsRepository:
             return self._get_card_record_by_id(connection, card_id)
 
     def send_card(self, card_id: int, document_number: str, document_date: str, document_target: str) -> CardRecord:
+        """Позначає картку та всі пов'язані з нею записи як відправлені."""
+
         normalized_number, normalized_date, normalized_target = self._normalize_document_fields(
             "escort",
             document_number,
@@ -976,6 +851,8 @@ class CardsRepository:
             ).fetchall()
             send_note = self._build_send_note(normalized_number, normalized_date, normalized_target)
 
+            # Відправлення стосується всієї пов'язаної групи карток,
+            # бо користувач сприймає її як одну історію з кількома перевипусками.
             for row in rows:
                 updated_service_note = self._append_service_note(row["service_note"], send_note)
                 connection.execute(
@@ -1005,6 +882,8 @@ class CardsRepository:
             return self._get_card_record_by_id(connection, card_id)
 
     def destroy_card(self, card_id: int, document_number: str, document_date: str) -> CardRecord:
+        """Фіксує знищення поточної картки за реквізитами акта."""
+
         normalized_number, normalized_date, _ = self._normalize_document_fields(
             "act",
             document_number,
@@ -1047,6 +926,8 @@ class CardsRepository:
             return self._get_card_record_by_id(connection, card_id)
 
     def return_card(self, card_id: int, document_number: str, document_date: str, document_target: str) -> CardRecord:
+        """Повертає відправлену картку в активний стан і очищає реквізити відправлення."""
+
         normalized_number, normalized_date, normalized_target = self._normalize_document_fields(
             "escort",
             document_number,
@@ -1073,6 +954,8 @@ class CardsRepository:
                 normalized_target,
             )
 
+            # Повернення, як і відправлення, синхронізуємо по всій групі пов'язаних карток,
+            # щоб старі записи не лишались у хибному стані "відправлено".
             for row in rows:
                 updated_service_note = self._append_service_note(row["service_note"], return_note)
                 connection.execute(
@@ -1102,6 +985,8 @@ class CardsRepository:
             return self._get_card_record_by_id(connection, card_id)
 
     def update_card_service_note(self, card_id: int, service_note: str) -> CardRecord:
+        """Оновлює службову примітку картки без зміни інших полів."""
+
         normalized_service_note = self._normalize_note_part(service_note)
 
         with self._connect() as connection:
@@ -1118,6 +1003,8 @@ class CardsRepository:
         return self._build_card_record_from_row(row)
 
     def get_related_card_ids(self, card_id: int) -> list[int]:
+        """Повертає всі id карток, що належать до однієї історичної групи."""
+
         with self._connect() as connection:
             current_row = connection.execute(
                 "SELECT relation_group_id FROM cards WHERE id = ?",
@@ -1136,6 +1023,8 @@ class CardsRepository:
         return [row["id"] for row in rows]
 
     def _ensure_card_is_editable(self, row: sqlite3.Row) -> None:
+        # Редагування дозволене лише для поточної активної картки:
+        # історичні, відправлені та знищені записи мають лишатися незмінними.
         if not bool(row["is_current"]):
             raise ValueError("Ця картка неактивна після зміни прізвища і не може редагуватися.")
         if row["lifecycle_state"] == "sent":
@@ -1144,6 +1033,8 @@ class CardsRepository:
             raise ValueError("Знищену картку не можна редагувати.")
 
     def _normalize_name_part(self, value: str, field_name: str) -> str:
+        # Тут не лише обрізаємо пробіли, а й стискаємо повтори,
+        # щоб у базу не потрапляли візуально однакові, але різні рядки.
         normalized_value = " ".join(value.strip().split())
         if not normalized_value:
             raise ValueError(f"Поле «{field_name}» не може бути порожнім.")
@@ -1156,6 +1047,8 @@ class CardsRepository:
         return normalized_value
 
     def _build_letter(self, surname: str) -> str:
+        # Літеру картки беремо з першої української літери прізвища,
+        # і саме вона визначає внутрішню серію нумерації.
         match = _UKRAINIAN_LETTER_PATTERN.search(surname)
         if match is None:
             raise ValueError("Не вдалося визначити літеру для картки за прізвищем.")
@@ -1206,6 +1099,8 @@ class CardsRepository:
         document_date: str,
         document_target: str,
     ) -> tuple[str, str, str]:
+        # Обов'язкові поля залежать від типу документа:
+        # супровід потребує адресата, акт - лише номер і дату, службові події - тільки дату.
         normalized_number = " ".join(document_number.strip().split())
         normalized_target = " ".join(document_target.strip().split())
 
@@ -1256,6 +1151,8 @@ class CardsRepository:
         return normalized_value
 
     def _normalize_access_fields(self, access_date: str, order_number: str, access_type: str, status: str) -> tuple[str, str, str, str]:
+        # Для доступу перевіряємо весь набір реквізитів разом, бо помилка будь-якого поля
+        # робить запис юридично неповним для подальших похідних розрахунків.
         normalized_access_date = self._normalize_date_value(access_date, "Дата", allow_empty=False)
         normalized_order_number = self._normalize_text_value(order_number)
         if not normalized_order_number:
@@ -1276,6 +1173,8 @@ class CardsRepository:
         date_field_name: str,
         require_number: bool,
     ) -> tuple[str, str]:
+        # Допоміжна перевірка для кількох однотипних пар "номер-дата",
+        # щоб правила не дублювалися окремо для супроводу, відповіді й розпорядження.
         normalized_number = self._normalize_text_value(number_value)
         if not normalized_number:
             if require_number:
@@ -1301,6 +1200,8 @@ class CardsRepository:
         admission_status: str,
         require_escort: bool,
     ) -> tuple[str, str, str, str, str, str, str, str]:
+        # Тут збираємо всі реквізити допуску в єдину послідовність,
+        # яку потім напряму використовують INSERT та UPDATE запити.
         normalized_escort_number, normalized_escort_date = self._normalize_number_date_pair(
             escort_number,
             escort_date,
@@ -1340,6 +1241,8 @@ class CardsRepository:
         )
 
     def _append_service_note(self, current_note: str, extra_note: str) -> str:
+        # Службові нотатки накопичуються як журнал подій, тому нові фрагменти
+        # додаються в кінець без втрати попередньої історії.
         current_value = current_note.strip()
         extra_value = extra_note.strip()
         if not current_value:
@@ -1376,6 +1279,8 @@ class CardsRepository:
         old_surname: str,
         new_surname: str,
     ) -> None:
+        # Зміна прізвища має відбитися на всіх пов'язаних картках,
+        # інакше історія однієї особи роз'їдеться по різних написаннях.
         if old_surname == new_surname:
             return
 
@@ -1398,6 +1303,8 @@ class CardsRepository:
         return letter or number
 
     def _ensure_card_exists(self, connection: sqlite3.Connection, card_id: int) -> None:
+        """Підтверджує, що картка існує, перш ніж працювати з її підлеглими записами."""
+
         row = connection.execute("SELECT 1 FROM cards WHERE id = ?", (card_id,)).fetchone()
         if row is None:
             raise ValueError("Картку не знайдено.")
@@ -1405,25 +1312,18 @@ class CardsRepository:
     def _build_card_record_from_row(
         self,
         row: sqlite3.Row,
-        form_override: str | None = None,
+        admission_state: AdmissionState | None = None,
+        access_state: AccessState | None = None,
         derived_workflow_status: str | None = None,
-        has_active_admission: bool = False,
-        has_active_access: bool = False,
-        access_revoked_after_grant: bool = False,
-        access_revoked_date: str = "",
-        admission_revoked_after_grant: bool = False,
-        admission_revoked_date: str = "",
-        reissue_date: str = "",
     ) -> CardRecord:
-        resolved_workflow_status = derived_workflow_status or self._derive_workflow_status(
+        # Тут з'єднуємо сирий рядок таблиці cards з похідним доменним станом,
+        # який було обчислено окремо за історією допусків і доступів.
+        resolved_admission_state = admission_state or AdmissionState(form=row["form"])
+        resolved_access_state = access_state or AccessState()
+        resolved_workflow_status = derived_workflow_status or derive_workflow_status(
             row["lifecycle_state"],
-            admission_revoked_after_grant,
-            admission_revoked_date,
-            has_active_admission,
-            has_active_access,
-            reissue_date,
-            access_revoked_after_grant,
-            access_revoked_date,
+            resolved_admission_state,
+            resolved_access_state,
         )
         return CardRecord(
             card_id=row["id"],
@@ -1433,7 +1333,7 @@ class CardsRepository:
             surname=row["surname"],
             name=row["name"],
             patronymic=row["patronymic"],
-            form=row["form"] if form_override is None else form_override,
+            form=resolved_admission_state.form,
             workflow_status=row["workflow_status"],
             derived_workflow_status=resolved_workflow_status,
             document_kind=row["document_kind"],
@@ -1445,13 +1345,13 @@ class CardsRepository:
             relation_group_id=row["relation_group_id"],
             is_current=bool(row["is_current"]),
             lifecycle_state=row["lifecycle_state"],
-            has_active_admission=has_active_admission,
-            has_active_access=has_active_access,
-            access_revoked_after_grant=access_revoked_after_grant,
-            access_revoked_date=access_revoked_date,
-            admission_revoked_after_grant=admission_revoked_after_grant,
-            admission_revoked_date=admission_revoked_date,
-            reissue_date=reissue_date,
+            has_active_admission=resolved_admission_state.has_active,
+            has_active_access=resolved_access_state.has_active,
+            access_revoked_after_grant=resolved_access_state.revoked_after_grant,
+            access_revoked_date=resolved_access_state.revoked_date,
+            admission_revoked_after_grant=resolved_admission_state.revoked_after_grant,
+            admission_revoked_date=resolved_admission_state.revoked_date,
+            reissue_date=resolved_admission_state.reissue_date,
         )
 
     def _build_admission_record_from_row(self, row: sqlite3.Row) -> AdmissionRecord:
@@ -1479,6 +1379,8 @@ class CardsRepository:
         )
 
     def _get_card_record_by_id(self, connection: sqlite3.Connection, card_id: int) -> CardRecord:
+        """Зчитує одну картку з бази та перетворює її на доменну модель."""
+
         row = connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
         if row is None:
             raise ValueError("Картку для читання не знайдено.")
@@ -1491,6 +1393,8 @@ class CardsRepository:
         number: str,
         card_id: int | None,
     ) -> None:
+        # У межах однієї літери номер має бути унікальним,
+        # інакше користувач не зможе однозначно знайти картку за кодом.
         if card_id is None:
             row = connection.execute(
                 "SELECT id FROM cards WHERE letter = ? AND number = ? LIMIT 1",
@@ -1506,6 +1410,8 @@ class CardsRepository:
             raise ValueError("Картка з таким номером у межах цієї літери вже існує.")
 
     def _get_next_number_for_letter(self, connection: sqlite3.Connection, letter: str) -> int:
+        """Повертає наступний вільний числовий номер у межах заданої літери."""
+
         row = connection.execute(
             """
             SELECT COALESCE(MAX(CAST(number AS INTEGER)), 0) AS max_number
