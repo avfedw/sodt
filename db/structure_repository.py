@@ -13,7 +13,7 @@ _UNIT_TYPE_ORDER = [
     "radio_station",
 ]
 _UNIT_TYPE_RANK = {unit_type: index for index, unit_type in enumerate(_UNIT_TYPE_ORDER)}
-_EXPECTED_STRUCTURE_COLUMNS = ["id", "name", "unit_type", "parent_id", "sort_order"]
+_EXPECTED_STRUCTURE_COLUMNS = ["id", "name", "short_name", "unit_type", "parent_id", "sort_order"]
 
 
 @dataclass(slots=True)
@@ -22,6 +22,7 @@ class StructureUnitRecord:
 
     unit_id: int
     name: str
+    short_name: str
     unit_type: str
     parent_id: int | None
     sort_order: int = 0
@@ -51,6 +52,7 @@ class StructureRepository:
                 CREATE TABLE IF NOT EXISTS structure_units (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL DEFAULT '',
+                    short_name TEXT NOT NULL DEFAULT '',
                     unit_type TEXT NOT NULL DEFAULT '',
                     parent_id INTEGER NULL,
                     sort_order INTEGER NOT NULL DEFAULT 0,
@@ -71,6 +73,10 @@ class StructureRepository:
                     "ALTER TABLE structure_units ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
                 )
                 self._rebuild_sort_order(connection)
+            if "short_name" not in columns:
+                connection.execute(
+                    "ALTER TABLE structure_units ADD COLUMN short_name TEXT NOT NULL DEFAULT ''"
+                )
 
     def list_units(self) -> list[StructureUnitRecord]:
         """Повертає всі оргодиниці структури з назвами батьківських вузлів."""
@@ -80,6 +86,7 @@ class StructureRepository:
                 """
                 SELECT unit.id,
                        unit.name,
+                      unit.short_name,
                        unit.unit_type,
                        unit.parent_id,
                       unit.sort_order,
@@ -92,27 +99,29 @@ class StructureRepository:
 
         return [self._build_unit_record(row) for row in rows]
 
-    def create_unit(self, name: str, unit_type: str, parent_id: int | None) -> StructureUnitRecord:
+    def create_unit(self, name: str, short_name: str, unit_type: str, parent_id: int | None) -> StructureUnitRecord:
         """Створює нову організаційну одиницю з перевіркою її місця в ієрархії."""
 
         normalized_name = self._normalize_name(name)
+        normalized_short_name = self._normalize_short_name(short_name)
         normalized_type = self._normalize_unit_type(unit_type)
 
         with self._connect() as connection:
             self._validate_parent_relation(connection, normalized_type, parent_id, current_unit_id=None)
             sort_order = self._next_sort_order(connection, parent_id)
             cursor = connection.execute(
-                "INSERT INTO structure_units (name, unit_type, parent_id, sort_order) VALUES (?, ?, ?, ?)",
-                (normalized_name, normalized_type, parent_id, sort_order),
+                "INSERT INTO structure_units (name, short_name, unit_type, parent_id, sort_order) VALUES (?, ?, ?, ?, ?)",
+                (normalized_name, normalized_short_name, normalized_type, parent_id, sort_order),
             )
             row = self._get_unit_row_by_id(connection, cursor.lastrowid)
 
         return self._build_unit_record(row)
 
-    def update_unit(self, unit_id: int, name: str, unit_type: str, parent_id: int | None) -> StructureUnitRecord:
+    def update_unit(self, unit_id: int, name: str, short_name: str, unit_type: str, parent_id: int | None) -> StructureUnitRecord:
         """Оновлює оргодиницю і перевіряє, чи не ламає зміна ієрархію."""
 
         normalized_name = self._normalize_name(name)
+        normalized_short_name = self._normalize_short_name(short_name)
         normalized_type = self._normalize_unit_type(unit_type)
 
         with self._connect() as connection:
@@ -124,8 +133,8 @@ class StructureRepository:
                 self._close_sort_order_gap(connection, current_row["parent_id"], sort_order, excluded_unit_id=unit_id)
                 sort_order = self._next_sort_order(connection, parent_id)
             connection.execute(
-                "UPDATE structure_units SET name = ?, unit_type = ?, parent_id = ?, sort_order = ? WHERE id = ?",
-                (normalized_name, normalized_type, parent_id, sort_order, unit_id),
+                "UPDATE structure_units SET name = ?, short_name = ?, unit_type = ?, parent_id = ?, sort_order = ? WHERE id = ?",
+                (normalized_name, normalized_short_name, normalized_type, parent_id, sort_order, unit_id),
             )
             row = self._get_unit_row_by_id(connection, unit_id)
 
@@ -182,6 +191,12 @@ class StructureRepository:
         normalized_value = " ".join(value.strip().split())
         if not normalized_value:
             raise ValueError("Назва організаційної одиниці не може бути порожньою.")
+        return normalized_value
+
+    def _normalize_short_name(self, value: str) -> str:
+        normalized_value = " ".join(value.strip().split())
+        if not normalized_value:
+            raise ValueError("Скорочена назва організаційної одиниці не може бути порожньою.")
         return normalized_value
 
     def _normalize_unit_type(self, value: str) -> str:
@@ -292,6 +307,7 @@ class StructureRepository:
             """
             SELECT unit.id,
                    unit.name,
+                     unit.short_name,
                    unit.unit_type,
                    unit.parent_id,
                      unit.sort_order,
@@ -310,6 +326,7 @@ class StructureRepository:
         return StructureUnitRecord(
             unit_id=int(row["id"]),
             name=row["name"],
+            short_name=row["short_name"],
             unit_type=row["unit_type"],
             parent_id=row["parent_id"],
             sort_order=int(row["sort_order"]),

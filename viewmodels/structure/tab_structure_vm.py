@@ -41,13 +41,14 @@ class TabStructureViewModel:
             self.add_child_button_text = "Add child unit"
             self.edit_button_text = "Edit"
             self.delete_button_text = "Delete"
-            self.headers = ["Name", "Type"]
+            self.headers = ["Name", "Short name", "Type"]
             self.empty_state_text = "Structure is empty."
             self.validation_error_title = "Validation error"
             self.dialog_texts = {
                 "add_title": "Add organizational unit",
                 "edit_title": "Edit organizational unit",
                 "name": "Name",
+                "short_name": "Short name",
                 "unit_type": "Type",
                 "parent": "Parent unit",
                 "no_parent": "No parent unit",
@@ -69,11 +70,11 @@ class TabStructureViewModel:
     def get_units(self):
         return self.repository.list_units()
 
-    def create_unit(self, name: str, unit_type: str, parent_id: int | None):
-        return self.repository.create_unit(name, unit_type, parent_id)
+    def create_unit(self, name: str, short_name: str, unit_type: str, parent_id: int | None):
+        return self.repository.create_unit(name, short_name, unit_type, parent_id)
 
-    def update_unit(self, unit_id: int, name: str, unit_type: str, parent_id: int | None):
-        return self.repository.update_unit(unit_id, name, unit_type, parent_id)
+    def update_unit(self, unit_id: int, name: str, short_name: str, unit_type: str, parent_id: int | None):
+        return self.repository.update_unit(unit_id, name, short_name, unit_type, parent_id)
 
     def delete_unit(self, unit_id: int):
         self.repository.delete_unit(unit_id)

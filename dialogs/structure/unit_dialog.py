@@ -26,6 +26,9 @@ class StructureUnitDialog(CenteredDialog):
         self.name_input = QLineEdit(self.current_unit.name if self.is_edit_mode else "", self)
         form_layout.addRow(self.texts["name"], self.name_input)
 
+        self.short_name_input = QLineEdit(self.current_unit.short_name if self.is_edit_mode else "", self)
+        form_layout.addRow(self.texts["short_name"], self.short_name_input)
+
         self.unit_type_input = QComboBox(self)
         for unit_type, label in self.unit_type_options:
             self.unit_type_input.addItem(label, unit_type)
@@ -105,9 +108,10 @@ class StructureUnitDialog(CenteredDialog):
         label_by_type = {code: label for code, label in self.unit_type_options}
         return f"{label_by_type.get(unit.unit_type, unit.unit_type)}: {unit.name}"
 
-    def get_input(self) -> tuple[str, str, int | None]:
+    def get_input(self) -> tuple[str, str, str, int | None]:
         return (
             self.name_input.text(),
+            self.short_name_input.text(),
             self.unit_type_input.currentData(),
             self.parent_input.currentData(),
         )

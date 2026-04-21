@@ -63,6 +63,7 @@ class TabStructure(QWidget):
         self.tree.header().setStretchLastSection(False)
         self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.tree.setRootIsDecorated(True)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
@@ -118,6 +119,7 @@ class TabStructure(QWidget):
         for unit in children_by_parent.get(parent_id, []):
             item = QTreeWidgetItem([
                 unit.name,
+                unit.short_name,
                 self.viewmodel.unit_type_label(unit.unit_type),
             ])
             item.setData(0, Qt.ItemDataRole.UserRole, unit.unit_id)

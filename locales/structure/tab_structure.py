@@ -9,7 +9,7 @@ tab_Structure = {
         "edit_button": "Редагувати",
         "delete_button": "Видалити",
         "empty_state": "Структура підприємства поки порожня.",
-        "headers": ["Назва", "Вид одиниці"],
+        "headers": ["Назва", "Скорочена назва", "Вид одиниці"],
         "validation_error_title": "Помилка перевірки",
         "type_labels": {
             "section": "Розділ",
@@ -22,6 +22,7 @@ tab_Structure = {
             "add_title": "Додавання організаційної одиниці",
             "edit_title": "Редагування організаційної одиниці",
             "name": "Назва",
+            "short_name": "Скорочена назва",
             "unit_type": "Вид одиниці",
             "parent": "Батьківська одиниця",
             "no_parent": "Без батьківської одиниці",
@@ -40,7 +41,7 @@ tab_Structure = {
         "edit_button": "Edit",
         "delete_button": "Delete",
         "empty_state": "The enterprise structure is empty.",
-        "headers": ["Name", "Unit type"],
+        "headers": ["Name", "Short name", "Unit type"],
         "validation_error_title": "Validation error",
         "type_labels": {
             "section": "Section",
@@ -53,6 +54,7 @@ tab_Structure = {
             "add_title": "Add organizational unit",
             "edit_title": "Edit organizational unit",
             "name": "Name",
+            "short_name": "Short name",
             "unit_type": "Unit type",
             "parent": "Parent unit",
             "no_parent": "No parent unit",

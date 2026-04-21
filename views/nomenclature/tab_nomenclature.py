@@ -1,13 +1,167 @@
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QPushButton, QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+
+from dialogs.nomenclature import NomenclatureCardPickerDialog, NomenclatureRowDialog
+from viewmodels.nomenclature import TabNomenclatureViewModel
 
 
 class TabNomenclature(QWidget):
-    """Тимчасова заглушка для вкладки номенклатури."""
+    """Початковий інтерфейс вкладки номенклатури з широкою таблицею."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, viewmodel: TabNomenclatureViewModel | None = None):
         super().__init__(parent)
+        self.viewmodel = viewmodel or TabNomenclatureViewModel()
+        self._column_widths = [260, 220, 170, 130, 150, 210, 130, 130, 150, 150, 150]
+        self._rows = []
+        self._init_ui()
+        self._load_rows()
+
+    def _init_ui(self):
         layout = QVBoxLayout(self)
-        label = QLabel("Вкладка номенклатури буде реалізована пізніше.", self)
-        label.setWordWrap(True)
-        layout.addWidget(label)
-        layout.addStretch(1)
+
+        button_layout = QHBoxLayout()
+        button_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.add_button = QPushButton(self.viewmodel.add_button_text, self)
+        self.add_button.clicked.connect(self._open_add_row_dialog)
+        button_layout.addWidget(self.add_button)
+
+        self.edit_button = QPushButton(self.viewmodel.edit_button_text, self)
+        self.edit_button.clicked.connect(self._open_edit_position_dialog)
+        button_layout.addWidget(self.edit_button)
+        layout.addLayout(button_layout)
+
+        self.empty_state_label = QLabel(self.viewmodel.empty_state_text, self)
+        self.empty_state_label.setWordWrap(True)
+        layout.addWidget(self.empty_state_label)
+
+        self.table = QTableWidget(self)
+        self.table.setColumnCount(len(self.viewmodel.headers))
+        self.table.setHorizontalHeaderLabels(self.viewmodel.headers)
+        self.table.setRowCount(0)
+        self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setWordWrap(False)
+        self.table.cellDoubleClicked.connect(self._open_card_picker_dialog)
+        self.table.itemSelectionChanged.connect(self._update_buttons_state)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+
+        for column_index, width in enumerate(self._column_widths):
+            self.table.setColumnWidth(column_index, width)
+
+        layout.addWidget(self.table)
+        self._update_buttons_state()
+
+    def _load_rows(self):
+        self._rows = self.viewmodel.get_rows()
+        self.table.setRowCount(len(self._rows))
+        self.empty_state_label.setVisible(not self._rows)
+
+        for row_index, row in enumerate(self._rows):
+            values = [
+                row.short_name_chain,
+                row.job_title,
+                row.nomenclature_number,
+                row.admission_form,
+                row.surname,
+                row.name_patronymic,
+                row.section_name,
+                row.group_name,
+                row.department_name,
+                row.division_name,
+                row.radio_station_name,
+            ]
+            for column_index, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setData(Qt.ItemDataRole.UserRole, row.row_id)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                self.table.setItem(row_index, column_index, item)
+
+    def _selected_row(self):
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            return None
+
+        row_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        for row in self._rows:
+            if row.row_id == row_id:
+                return row
+        return None
+
+    def _update_buttons_state(self):
+        self.edit_button.setEnabled(self._selected_row() is not None)
+
+    def _open_add_row_dialog(self):
+        dialog = NomenclatureRowDialog(
+            self.viewmodel.dialog_texts,
+            self.viewmodel.structure_unit_options(),
+            current_record=None,
+            parent=self.window(),
+        )
+        if dialog.exec() == 0:
+            return
+
+        try:
+            self.viewmodel.create_row(*dialog.get_input())
+        except ValueError as error:
+            QMessageBox.warning(self, self.viewmodel.validation_error_title, str(error))
+            return
+
+        self._load_rows()
+
+    def _open_edit_position_dialog(self):
+        selected_row = self._selected_row()
+        if selected_row is None:
+            QMessageBox.warning(self, self.viewmodel.validation_error_title, self.viewmodel.dialog_texts["select_row_warning"])
+            return
+
+        dialog = NomenclatureRowDialog(
+            self.viewmodel.dialog_texts,
+            self.viewmodel.structure_unit_options(),
+            current_record=selected_row,
+            parent=self.window(),
+        )
+        if dialog.exec() == 0:
+            return
+
+        try:
+            self.viewmodel.update_row(selected_row.row_id, *dialog.get_input())
+        except ValueError as error:
+            QMessageBox.warning(self, self.viewmodel.validation_error_title, str(error))
+            return
+
+        self._load_rows()
+
+    def _open_card_picker_dialog(self, *_args):
+        selected_row = self._selected_row()
+        if selected_row is None:
+            QMessageBox.warning(self, self.viewmodel.validation_error_title, self.viewmodel.dialog_texts["select_row_warning"])
+            return
+
+        dialog = NomenclatureCardPickerDialog(
+            self.viewmodel.card_picker_texts,
+            self.viewmodel.card_options(),
+            parent=self.window(),
+        )
+        if dialog.exec() == 0:
+            return
+
+        selected_card = dialog.get_selected_card()
+        if selected_card is None:
+            QMessageBox.warning(self, self.viewmodel.validation_error_title, self.viewmodel.card_picker_texts["select_card_warning"])
+            return
+
+        try:
+            self.viewmodel.assign_card_to_row(selected_row.row_id, selected_card.card_id)
+        except ValueError as error:
+            QMessageBox.warning(self, self.viewmodel.validation_error_title, str(error))
+            return
+
+        self._load_rows()

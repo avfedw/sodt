@@ -38,7 +38,14 @@ from .cards.tab_cards import get_tab_cards_table_headers as _cards_table_headers
 from .cards.tab_cards import get_tab_cards_admission_headers as _cards_admission_headers
 from .cards.tab_cards import name_for as _cards_name_for
 from .cards.tab_cards import validation_error_title_for as _cards_validation_error_title_for
+from .nomenclature.tab_nomenclature import add_button_text_for as _nomenclature_add_button_text_for
+from .nomenclature.tab_nomenclature import card_picker_texts_for as _nomenclature_card_picker_texts_for
+from .nomenclature.tab_nomenclature import dialog_texts_for as _nomenclature_dialog_texts_for
+from .nomenclature.tab_nomenclature import edit_button_text_for as _nomenclature_edit_button_text_for
+from .nomenclature.tab_nomenclature import empty_state_for as _nomenclature_empty_state_for
+from .nomenclature.tab_nomenclature import headers_for as _nomenclature_headers_for
 from .nomenclature.tab_nomenclature import name_for as _nomenclature_name_for
+from .nomenclature.tab_nomenclature import validation_error_title_for as _nomenclature_validation_error_title_for
 from .structure.tab_structure import add_button_text_for as _structure_add_button_text_for
 from .structure.tab_structure import add_child_button_text_for as _structure_add_child_button_text_for
 from .structure.tab_structure import delete_button_text_for as _structure_delete_button_text_for
@@ -129,6 +136,34 @@ def get_tab_cards_validation_error_title() -> str:
 
 def get_tab_nomenclature_name() -> str:
     return _nomenclature_name_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_add_button_text() -> str:
+    return _nomenclature_add_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_edit_button_text() -> str:
+    return _nomenclature_edit_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_empty_state_text() -> str:
+    return _nomenclature_empty_state_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_headers() -> list[str]:
+    return _nomenclature_headers_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_validation_error_title() -> str:
+    return _nomenclature_validation_error_title_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_dialog_texts() -> dict:
+    return _nomenclature_dialog_texts_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_card_picker_texts() -> dict:
+    return _nomenclature_card_picker_texts_for(CURRENT_LOCALE)
 
 
 def get_tab_structure_name() -> str:
