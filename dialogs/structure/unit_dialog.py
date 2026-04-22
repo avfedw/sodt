@@ -15,6 +15,7 @@ class StructureUnitDialog(CenteredDialog):
         self.initial_parent_id = initial_parent_id
         self.initial_unit_type = initial_unit_type
         self.is_edit_mode = current_unit is not None
+        self.selected_action = "save"
         self._current_parent_id = current_unit.parent_id if current_unit is not None else initial_parent_id
         self.setWindowTitle(self.texts["edit_title"] if self.is_edit_mode else self.texts["add_title"])
         self._init_ui()
@@ -49,10 +50,22 @@ class StructureUnitDialog(CenteredDialog):
 
         button_box = QDialogButtonBox(self)
         save_button = button_box.addButton(self.texts["save"], QDialogButtonBox.ButtonRole.AcceptRole)
+        if self.is_edit_mode:
+            delete_button = button_box.addButton(self.texts["delete_button"], QDialogButtonBox.ButtonRole.ActionRole)
         cancel_button = button_box.addButton(self.texts["cancel"], QDialogButtonBox.ButtonRole.RejectRole)
-        save_button.clicked.connect(self.accept)
+        save_button.clicked.connect(self._accept_save)
+        if self.is_edit_mode:
+            delete_button.clicked.connect(self._accept_delete)
         cancel_button.clicked.connect(self.reject)
         main_layout.addWidget(button_box)
+
+    def _accept_save(self):
+        self.selected_action = "save"
+        self.accept()
+
+    def _accept_delete(self):
+        self.selected_action = "delete"
+        self.accept()
 
     def _rebuild_parent_options(self):
         selected_type = self.unit_type_input.currentData()

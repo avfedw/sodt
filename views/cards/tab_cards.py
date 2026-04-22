@@ -675,6 +675,15 @@ class TabCards(QWidget):
         try:
             if dialog.selected_action == "update":
                 self.viewmodel.update_card(card.card_id, *dialog.action_payload)
+            elif dialog.selected_action == "delete":
+                answer = QMessageBox.question(
+                    self,
+                    self.viewmodel.edit_dialog_texts["delete_confirmation_title"],
+                    self.viewmodel.edit_dialog_texts["delete_card_confirmation_text"],
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    return
+                self.viewmodel.delete_card(card.card_id)
             elif dialog.selected_action == "send":
                 self.viewmodel.send_card(card.card_id, *dialog.action_payload)
             elif dialog.selected_action == "destroy":
@@ -713,7 +722,17 @@ class TabCards(QWidget):
             return
 
         try:
-            self.viewmodel.update_admission(admission.admission_id, *dialog.get_input())
+            if dialog.selected_action == "delete":
+                answer = QMessageBox.question(
+                    self,
+                    self.viewmodel.admission_dialog_texts["delete_confirmation_title"],
+                    self.viewmodel.admission_dialog_texts["delete_admission_confirmation_text"],
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    return
+                self.viewmodel.delete_admission(admission.admission_id)
+            else:
+                self.viewmodel.update_admission(admission.admission_id, *dialog.get_input())
         except ValueError as error:
             QMessageBox.warning(self, self.viewmodel.validation_error_title, str(error))
             return
@@ -744,7 +763,17 @@ class TabCards(QWidget):
             return
 
         try:
-            self.viewmodel.update_access(access_record.access_id, *dialog.get_input())
+            if dialog.selected_action == "delete":
+                answer = QMessageBox.question(
+                    self,
+                    self.viewmodel.access_dialog_texts["delete_confirmation_title"],
+                    self.viewmodel.access_dialog_texts["delete_access_confirmation_text"],
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    return
+                self.viewmodel.delete_access(access_record.access_id)
+            else:
+                self.viewmodel.update_access(access_record.access_id, *dialog.get_input())
         except ValueError as error:
             QMessageBox.warning(self, self.viewmodel.validation_error_title, str(error))
             return

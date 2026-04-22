@@ -38,6 +38,12 @@ from .cards.tab_cards import get_tab_cards_table_headers as _cards_table_headers
 from .cards.tab_cards import get_tab_cards_admission_headers as _cards_admission_headers
 from .cards.tab_cards import name_for as _cards_name_for
 from .cards.tab_cards import validation_error_title_for as _cards_validation_error_title_for
+from .assignment_history.tab_assignment_history import empty_state_for as _assignment_history_empty_state_for
+from .assignment_history.tab_assignment_history import headers_for as _assignment_history_headers_for
+from .assignment_history.tab_assignment_history import name_for as _assignment_history_name_for
+from .assignment_history.tab_assignment_history import person_filter_placeholder_for as _assignment_history_person_filter_placeholder_for
+from .assignment_history.tab_assignment_history import position_filter_placeholder_for as _assignment_history_position_filter_placeholder_for
+from .assignment_history.tab_assignment_history import refresh_button_text_for as _assignment_history_refresh_button_text_for
 from .nomenclature.tab_nomenclature import add_button_text_for as _nomenclature_add_button_text_for
 from .nomenclature.tab_nomenclature import card_picker_texts_for as _nomenclature_card_picker_texts_for
 from .nomenclature.tab_nomenclature import dialog_texts_for as _nomenclature_dialog_texts_for
@@ -133,6 +139,30 @@ def get_tab_cards_edit_dialog_texts() -> dict:
 
 def get_tab_cards_validation_error_title() -> str:
     return _cards_validation_error_title_for(CURRENT_LOCALE)
+
+
+def get_tab_assignment_history_name() -> str:
+    return _assignment_history_name_for(CURRENT_LOCALE)
+
+
+def get_tab_assignment_history_refresh_button_text() -> str:
+    return _assignment_history_refresh_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_assignment_history_empty_state_text() -> str:
+    return _assignment_history_empty_state_for(CURRENT_LOCALE)
+
+
+def get_tab_assignment_history_position_filter_placeholder() -> str:
+    return _assignment_history_position_filter_placeholder_for(CURRENT_LOCALE)
+
+
+def get_tab_assignment_history_person_filter_placeholder() -> str:
+    return _assignment_history_person_filter_placeholder_for(CURRENT_LOCALE)
+
+
+def get_tab_assignment_history_headers() -> list[str]:
+    return _assignment_history_headers_for(CURRENT_LOCALE)
 
 
 def get_tab_nomenclature_name() -> str:

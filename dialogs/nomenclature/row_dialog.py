@@ -39,6 +39,10 @@ class NomenclatureRowDialog(CenteredDialog):
         if self.current_record is not None:
             current_index = self.admission_form_input.findData(self.current_record.admission_form)
             self.admission_form_input.setCurrentIndex(max(0, current_index))
+        else:
+            default_value = self.texts.get("default_admission_form", "Ф-2")
+            default_index = self.admission_form_input.findData(default_value)
+            self.admission_form_input.setCurrentIndex(max(0, default_index))
         form_layout.addRow(self.texts["admission_form"], self.admission_form_input)
 
         main_layout.addLayout(form_layout)

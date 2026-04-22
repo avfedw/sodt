@@ -56,6 +56,7 @@ _EXPECTED_CARD_COLUMNS = [
     "is_current",
     "lifecycle_state",
     "is_temporary",
+    "has_zalik",
 ]
 _EXPECTED_ADMISSION_COLUMNS = [
     "id",
@@ -118,6 +119,7 @@ class CardRecord:
     is_current: bool
     lifecycle_state: str
     is_temporary: bool = False
+    has_zalik: bool = False
     derived_workflow_status: str = ""
     has_active_admission: bool = False
     has_active_access: bool = False
@@ -292,6 +294,11 @@ class CardsRepository:
                         "ALTER TABLE cards ADD COLUMN is_temporary INTEGER NOT NULL DEFAULT 0"
                     )
                     columns.append("is_temporary")
+                if columns == _EXPECTED_CARD_COLUMNS[:-1]:
+                    connection.execute(
+                        "ALTER TABLE cards ADD COLUMN has_zalik INTEGER NOT NULL DEFAULT 0"
+                    )
+                    columns.append("has_zalik")
                 # Для локального десктопного застосунку тут простіше перестворити таблицю,
                 # ніж підтримувати складні міграції для кожної проміжної версії схеми.
                 if columns != _EXPECTED_CARD_COLUMNS:
@@ -318,7 +325,8 @@ class CardsRepository:
                     relation_group_id INTEGER NOT NULL DEFAULT 0,
                     is_current INTEGER NOT NULL DEFAULT 1,
                     lifecycle_state TEXT NOT NULL DEFAULT '',
-                    is_temporary INTEGER NOT NULL DEFAULT 0
+                    is_temporary INTEGER NOT NULL DEFAULT 0,
+                    has_zalik INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -447,6 +455,7 @@ class CardsRepository:
                     is_current=1,
                     lifecycle_state="",
                     is_temporary=1,
+                    has_zalik=0,
                 )
             else:
                 letter = self._build_letter(normalized_surname)
@@ -469,6 +478,7 @@ class CardsRepository:
                     is_current=1,
                     lifecycle_state="",
                     is_temporary=0,
+                    has_zalik=0,
                 )
 
         return self._build_card_record_from_row(row)
@@ -508,6 +518,7 @@ class CardsRepository:
                 is_current=1,
                 lifecycle_state="",
                 is_temporary=0,
+                has_zalik=current_row["has_zalik"],
             )
             connection.execute("DELETE FROM cards WHERE id = ?", (card_id,))
 
@@ -545,6 +556,7 @@ class CardsRepository:
                 """,
                 (card_id, normalized_access_date, normalized_order_number, normalized_access_type, normalized_status),
             )
+            self._ensure_zalik_after_granted_access(connection, card_id, normalized_status)
             row = connection.execute(
                 "SELECT * FROM accesses WHERE id = ?",
                 (cursor.lastrowid,),
@@ -583,12 +595,28 @@ class CardsRepository:
                 """,
                 (normalized_access_date, normalized_order_number, normalized_access_type, normalized_status, access_id),
             )
+            self._ensure_zalik_after_granted_access(connection, row["card_id"], normalized_status)
             updated_row = connection.execute(
                 "SELECT * FROM accesses WHERE id = ?",
                 (access_id,),
             ).fetchone()
 
         return self._build_access_record_from_row(updated_row)
+
+    def delete_access(self, access_id: int) -> None:
+        """Видаляє запис доступу за ідентифікатором."""
+
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM accesses WHERE id = ?",
+                (access_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("Запис доступу не знайдено.")
+
+            card_row = self._get_card_row(connection, row["card_id"])
+            self._ensure_card_allows_security_records(card_row)
+            connection.execute("DELETE FROM accesses WHERE id = ?", (access_id,))
 
     def list_admissions(self, card_id: int) -> list[AdmissionRecord]:
         """Повертає історію допусків для конкретної картки."""
@@ -708,6 +736,21 @@ class CardsRepository:
 
         return self._build_admission_record_from_row(updated_row)
 
+    def delete_admission(self, admission_id: int) -> None:
+        """Видаляє запис допуску за ідентифікатором."""
+
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM admissions WHERE id = ?",
+                (admission_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("Запис розшифровки не знайдено.")
+
+            card_row = self._get_card_row(connection, row["card_id"])
+            self._ensure_card_allows_security_records(card_row)
+            connection.execute("DELETE FROM admissions WHERE id = ?", (admission_id,))
+
     def update_card(
         self,
         card_id: int,
@@ -721,6 +764,7 @@ class CardsRepository:
         document_date: str,
         document_target: str,
         user_note: str,
+        has_zalik: bool = False,
     ) -> CardRecord:
         """Оновлює картку або створює нову пов'язану картку при зміні літери прізвища."""
 
@@ -735,6 +779,7 @@ class CardsRepository:
             document_date,
             document_target,
         )
+        normalized_has_zalik = bool(has_zalik)
         normalized_user_note = self._normalize_note_part(user_note)
 
         with self._connect() as connection:
@@ -756,6 +801,7 @@ class CardsRepository:
                         document_number = '',
                         document_date = '',
                         document_target = '',
+                        has_zalik = ?,
                         user_note = ?
                     WHERE id = ?
                     """,
@@ -764,6 +810,7 @@ class CardsRepository:
                         normalized_surname,
                         normalized_name,
                         normalized_patronymic,
+                        int(normalized_has_zalik),
                         normalized_user_note,
                         card_id,
                     ),
@@ -797,6 +844,7 @@ class CardsRepository:
                         document_number = ?,
                         document_date = ?,
                         document_target = ?,
+                        has_zalik = ?,
                         user_note = ?,
                         relation_group_id = ?
                     WHERE id = ?
@@ -813,6 +861,7 @@ class CardsRepository:
                         normalized_document_number,
                         normalized_document_date,
                         normalized_document_target,
+                        int(normalized_has_zalik),
                         normalized_user_note,
                         relation_group_id,
                         card_id,
@@ -848,9 +897,10 @@ class CardsRepository:
                     user_note,
                     relation_group_id,
                     is_current,
-                    lifecycle_state
+                    lifecycle_state,
+                    has_zalik
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     new_letter,
@@ -869,6 +919,7 @@ class CardsRepository:
                     relation_group_id,
                     1,
                     "",
+                    int(normalized_has_zalik),
                 ),
             )
             new_card_id = cursor.lastrowid
@@ -892,7 +943,8 @@ class CardsRepository:
                     service_note = ?,
                     user_note = ?,
                     relation_group_id = ?,
-                    is_current = 0
+                    is_current = 0,
+                    has_zalik = ?
                 WHERE id = ?
                 """,
                 (
@@ -908,6 +960,7 @@ class CardsRepository:
                     old_service_note,
                     normalized_user_note,
                     relation_group_id,
+                    int(normalized_has_zalik),
                     card_id,
                 ),
             )
@@ -1015,6 +1068,34 @@ class CardsRepository:
             )
 
             return self._get_card_record_by_id(connection, card_id)
+
+    def delete_card(self, card_id: int) -> None:
+        """Видаляє картку разом із підлеглими записами та прив'язками номенклатури."""
+
+        with self._connect() as connection:
+            current_row = connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+            if current_row is None:
+                raise ValueError("Картку для видалення не знайдено.")
+
+            connection.execute("DELETE FROM accesses WHERE card_id = ?", (card_id,))
+            connection.execute("DELETE FROM admissions WHERE card_id = ?", (card_id,))
+            nomenclature_exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nomenclature_rows'"
+            ).fetchone()
+            if nomenclature_exists is not None:
+                connection.execute(
+                    """
+                    UPDATE nomenclature_rows
+                    SET card_id = NULL,
+                        surname = '',
+                        name_patronymic = '',
+                        appointment_order_number = '',
+                        appointment_order_date = ''
+                    WHERE card_id = ?
+                    """,
+                    (card_id,),
+                )
+            connection.execute("DELETE FROM cards WHERE id = ?", (card_id,))
 
     def return_card(self, card_id: int, document_number: str, document_date: str, document_target: str) -> CardRecord:
         """Повертає відправлену картку в активний стан і очищає реквізити відправлення."""
@@ -1428,6 +1509,15 @@ class CardsRepository:
         if row is None:
             raise ValueError("Картку не знайдено.")
 
+    def _ensure_zalik_after_granted_access(self, connection: sqlite3.Connection, card_id: int, status: str) -> None:
+        if status not in {"надано", "granted"}:
+            return
+
+        connection.execute(
+            "UPDATE cards SET has_zalik = 1 WHERE id = ? AND has_zalik = 0",
+            (card_id,),
+        )
+
     def _insert_card(
         self,
         connection: sqlite3.Connection,
@@ -1449,6 +1539,7 @@ class CardsRepository:
         is_current: int,
         lifecycle_state: str,
         is_temporary: int,
+        has_zalik: int,
     ) -> sqlite3.Row:
         cursor = connection.execute(
             """
@@ -1470,9 +1561,10 @@ class CardsRepository:
                 relation_group_id,
                 is_current,
                 lifecycle_state,
-                is_temporary
+                is_temporary,
+                has_zalik
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 letter,
@@ -1493,6 +1585,7 @@ class CardsRepository:
                 is_current,
                 lifecycle_state,
                 is_temporary,
+                has_zalik,
             ),
         )
         card_id = cursor.lastrowid
@@ -1540,6 +1633,7 @@ class CardsRepository:
             is_current=bool(row["is_current"]),
             lifecycle_state=row["lifecycle_state"],
             is_temporary=bool(row["is_temporary"]),
+            has_zalik=bool(row["has_zalik"]),
             has_active_admission=resolved_admission_state.has_active,
             has_active_access=resolved_access_state.has_active,
             access_revoked_after_grant=resolved_access_state.revoked_after_grant,

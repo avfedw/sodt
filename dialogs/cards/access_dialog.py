@@ -13,6 +13,7 @@ class AccessDialog(CenteredDialog):
         self.texts = texts
         self.access_record = access_record
         self.is_edit_mode = access_record is not None
+        self.selected_action = "save"
         self.setWindowTitle(self.texts["edit_title"] if self.is_edit_mode else self.texts["add_title"])
         self._init_ui()
 
@@ -56,10 +57,22 @@ class AccessDialog(CenteredDialog):
 
         button_box = QDialogButtonBox(self)
         save_button = button_box.addButton(self.texts["save"], QDialogButtonBox.ButtonRole.AcceptRole)
+        if self.is_edit_mode:
+            delete_button = button_box.addButton(self.texts["delete_button"], QDialogButtonBox.ButtonRole.ActionRole)
         cancel_button = button_box.addButton(self.texts["cancel"], QDialogButtonBox.ButtonRole.RejectRole)
-        save_button.clicked.connect(self.accept)
+        save_button.clicked.connect(self._accept_save)
+        if self.is_edit_mode:
+            delete_button.clicked.connect(self._accept_delete)
         cancel_button.clicked.connect(self.reject)
         main_layout.addWidget(button_box)
+
+    def _accept_save(self):
+        self.selected_action = "save"
+        self.accept()
+
+    def _accept_delete(self):
+        self.selected_action = "delete"
+        self.accept()
 
     def _selected_access_types(self, value: str) -> set[str]:
         return {item.strip() for item in value.split(",") if item.strip()}

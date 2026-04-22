@@ -1,6 +1,6 @@
 from PySide6.QtCore import QRegularExpression
 from PySide6.QtGui import QRegularExpressionValidator
-from PySide6.QtWidgets import QComboBox, QDateEdit, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDateEdit, QDialogButtonBox, QFormLayout, QLabel, QLineEdit, QPlainTextEdit, QVBoxLayout
 
 from ..base_dialog import CenteredDialog
 from ..helpers import create_date_input, create_ukrainian_name_validator, read_date_input_value, set_empty_date
@@ -74,6 +74,10 @@ class EditCardDialog(CenteredDialog):
         self.document_target_input = QLineEdit(self.card.document_target, self)
         form_layout.addRow(self.texts["document_target"], self.document_target_input)
 
+        self.has_zalik_input = QCheckBox(self)
+        self.has_zalik_input.setChecked(self.card.has_zalik)
+        form_layout.addRow(self.texts["has_zalik"], self.has_zalik_input)
+
         self.service_note_input = QPlainTextEdit(self.card.service_note, self)
         self.service_note_input.setReadOnly(True)
         self.service_note_input.setFixedHeight(70)
@@ -95,11 +99,12 @@ class EditCardDialog(CenteredDialog):
 
         button_box = QDialogButtonBox(self)
         self.save_button = button_box.addButton(self.texts["save"], QDialogButtonBox.ButtonRole.AcceptRole)
+        self.delete_button = button_box.addButton(self.texts["delete_button"], QDialogButtonBox.ButtonRole.ActionRole)
         cancel_button = button_box.addButton(self.texts["cancel"], QDialogButtonBox.ButtonRole.RejectRole)
         self.save_button.clicked.connect(self._accept_update)
+        self.delete_button.clicked.connect(self._accept_delete)
         cancel_button.clicked.connect(self.reject)
 
-        action_layout = QHBoxLayout()
         if self.card.can_edit and not self.card.is_temporary:
             # Додаткові дії не виконуються окремими кнопками в головному вікні,
             # щоб увесь сценарій роботи з карткою лишався в одному діалозі.
@@ -107,7 +112,7 @@ class EditCardDialog(CenteredDialog):
             self.destroy_button = button_box.addButton(self.texts["destroy_button"], QDialogButtonBox.ButtonRole.ActionRole)
             self.send_button.clicked.connect(self._open_send_dialog)
             self.destroy_button.clicked.connect(self._open_destroy_dialog)
-        else:
+        elif not self.card.can_edit:
             self._set_editable_state(False)
             self.save_button.setEnabled(False)
 
@@ -154,6 +159,7 @@ class EditCardDialog(CenteredDialog):
             self.document_number_input,
             self.document_date_input,
             self.document_target_input,
+            self.has_zalik_input,
             self.user_note_input,
         ]
         for widget in widgets:
@@ -227,7 +233,12 @@ class EditCardDialog(CenteredDialog):
         self.action_payload = ()
         self.accept()
 
-    def get_card_input(self) -> tuple[str, str, str, str, str, str, str, str, str]:
+    def _accept_delete(self):
+        self.selected_action = "delete"
+        self.action_payload = ()
+        self.accept()
+
+    def get_card_input(self) -> tuple[str, str, str, str, str, str, str, str, str, str, bool]:
         # Порядок повернення погоджений із сигнатурою update_card у ViewModel.
         return (
             self.surname_input.text(),
@@ -240,4 +251,5 @@ class EditCardDialog(CenteredDialog):
             self._date_input_value(self.document_date_input, allow_empty=True),
             self.document_target_input.text(),
             self.user_note_input.toPlainText(),
+            self.has_zalik_input.isChecked(),
         )

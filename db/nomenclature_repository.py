@@ -1,6 +1,7 @@
 """Робота з рядками номенклатури у SQLite."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 import sqlite3
 
@@ -11,12 +12,31 @@ class NomenclatureRecord:
 
     row_id: int
     structure_unit_id: int
+    card_id: int | None
     job_title: str
     nomenclature_number: str
     admission_form: str
     surname: str
     name_patronymic: str
+    appointment_order_number: str
+    appointment_order_date: str
+    vacancy_order_number: str
     sort_order: int | None
+
+
+@dataclass(slots=True)
+class AssignmentHistoryRecord:
+    """Один запис історії призначення на посаду."""
+
+    history_id: int
+    row_id: int
+    structure_unit_id: int
+    card_id: int | None
+    job_title: str
+    surname: str
+    name_patronymic: str
+    appointment_order_number: str
+    appointment_order_date: str
 
 
 class NomenclatureRepository:
@@ -42,13 +62,36 @@ class NomenclatureRepository:
                 CREATE TABLE IF NOT EXISTS nomenclature_rows (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     structure_unit_id INTEGER NOT NULL,
+                    card_id INTEGER NULL,
                     job_title TEXT NOT NULL DEFAULT '',
                     nomenclature_number TEXT NOT NULL DEFAULT '',
                     admission_form TEXT NOT NULL DEFAULT '',
                     surname TEXT NOT NULL DEFAULT '',
                     name_patronymic TEXT NOT NULL DEFAULT '',
+                    appointment_order_number TEXT NOT NULL DEFAULT '',
+                    appointment_order_date TEXT NOT NULL DEFAULT '',
+                    vacancy_order_number TEXT NOT NULL DEFAULT '',
                     sort_order INTEGER NULL,
+                    FOREIGN KEY(card_id) REFERENCES cards(id) ON DELETE SET NULL,
                     FOREIGN KEY(structure_unit_id) REFERENCES structure_units(id) ON DELETE RESTRICT
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS nomenclature_assignment_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nomenclature_row_id INTEGER NOT NULL,
+                    structure_unit_id INTEGER NOT NULL,
+                    card_id INTEGER NULL,
+                    job_title TEXT NOT NULL DEFAULT '',
+                    surname TEXT NOT NULL DEFAULT '',
+                    name_patronymic TEXT NOT NULL DEFAULT '',
+                    appointment_order_number TEXT NOT NULL DEFAULT '',
+                    appointment_order_date TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY(nomenclature_row_id) REFERENCES nomenclature_rows(id) ON DELETE RESTRICT,
+                    FOREIGN KEY(structure_unit_id) REFERENCES structure_units(id) ON DELETE RESTRICT,
+                    FOREIGN KEY(card_id) REFERENCES cards(id) ON DELETE SET NULL
                 )
                 """
             )
@@ -61,6 +104,22 @@ class NomenclatureRepository:
                 connection.execute(
                     "ALTER TABLE nomenclature_rows ADD COLUMN sort_order INTEGER NULL"
                 )
+            if "card_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE nomenclature_rows ADD COLUMN card_id INTEGER NULL"
+                )
+            if "appointment_order_number" not in columns:
+                connection.execute(
+                    "ALTER TABLE nomenclature_rows ADD COLUMN appointment_order_number TEXT NOT NULL DEFAULT ''"
+                )
+            if "appointment_order_date" not in columns:
+                connection.execute(
+                    "ALTER TABLE nomenclature_rows ADD COLUMN appointment_order_date TEXT NOT NULL DEFAULT ''"
+                )
+            if "vacancy_order_number" not in columns:
+                connection.execute(
+                    "ALTER TABLE nomenclature_rows ADD COLUMN vacancy_order_number TEXT NOT NULL DEFAULT ''"
+                )
 
     def list_rows(self) -> list[NomenclatureRecord]:
         """Повертає всі записи номенклатури у збереженому порядку."""
@@ -70,12 +129,16 @@ class NomenclatureRepository:
                 """
                 SELECT id,
                        structure_unit_id,
+                      card_id,
                        job_title,
                        nomenclature_number,
                        admission_form,
                        surname,
-                      name_patronymic,
-                      sort_order
+                                             name_patronymic,
+                                             appointment_order_number,
+                                             appointment_order_date,
+                                             vacancy_order_number,
+                                             sort_order
                 FROM nomenclature_rows
                   ORDER BY sort_order IS NULL, sort_order, id
                 """
@@ -108,13 +171,17 @@ class NomenclatureRepository:
                 """
                 INSERT INTO nomenclature_rows (
                     structure_unit_id,
+                    card_id,
                     job_title,
                     nomenclature_number,
                     admission_form,
                     surname,
                     name_patronymic,
+                    appointment_order_number,
+                    appointment_order_date,
+                    vacancy_order_number,
                     sort_order
-                ) VALUES (?, ?, ?, ?, ?, ?, NULL)
+                ) VALUES (?, NULL, ?, ?, ?, ?, ?, '', '', '', NULL)
                 """,
                 normalized_values,
             )
@@ -161,23 +228,135 @@ class NomenclatureRepository:
 
         return self._build_record(row)
 
-    def update_person(self, row_id: int, surname: str, name_patronymic: str) -> NomenclatureRecord:
+    def update_person(
+        self,
+        row_id: int,
+        card_id: int,
+        surname: str,
+        name_patronymic: str,
+        appointment_order_number: str,
+        appointment_order_date: str,
+    ) -> NomenclatureRecord:
         """Оновлює в записі лише ПІБ людини, вибраної з карток."""
 
+        normalized_card_id = int(card_id)
+        if normalized_card_id <= 0:
+            raise ValueError("Потрібно вибрати людину з карток.")
         normalized_surname = self._normalize_optional_text(surname)
         normalized_name_patronymic = self._normalize_optional_text(name_patronymic)
         if not normalized_surname or not normalized_name_patronymic:
             raise ValueError("Потрібно вибрати людину з карток.")
+        normalized_appointment_order_number = self._normalize_text(
+            appointment_order_number,
+            "Номер наказу призначення не може бути порожнім.",
+        )
+        normalized_appointment_order_date = self._normalize_date_value(
+            appointment_order_date,
+            "Дата наказу призначення не може бути порожньою.",
+        )
 
         with self._connect() as connection:
-            self._get_row_by_id(connection, row_id)
+            current_row = self._get_row_by_id(connection, row_id)
             connection.execute(
-                "UPDATE nomenclature_rows SET surname = ?, name_patronymic = ? WHERE id = ?",
-                (normalized_surname, normalized_name_patronymic, row_id),
+                """
+                UPDATE nomenclature_rows
+                SET card_id = NULL,
+                    surname = '',
+                    name_patronymic = '',
+                    appointment_order_number = '',
+                    appointment_order_date = '',
+                    vacancy_order_number = ?
+                WHERE card_id = ? AND id != ?
+                """,
+                (
+                    normalized_appointment_order_number,
+                    normalized_card_id,
+                    row_id,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE nomenclature_rows
+                SET card_id = ?,
+                    surname = ?,
+                    name_patronymic = ?,
+                    appointment_order_number = ?,
+                    appointment_order_date = ?,
+                    vacancy_order_number = ''
+                WHERE id = ?
+                """,
+                (
+                    normalized_card_id,
+                    normalized_surname,
+                    normalized_name_patronymic,
+                    normalized_appointment_order_number,
+                    normalized_appointment_order_date,
+                    row_id,
+                ),
+            )
+            self._insert_assignment_history(
+                connection,
+                row_id=row_id,
+                structure_unit_id=int(current_row["structure_unit_id"]),
+                card_id=normalized_card_id,
+                job_title=str(current_row["job_title"]),
+                surname=normalized_surname,
+                name_patronymic=normalized_name_patronymic,
+                appointment_order_number=normalized_appointment_order_number,
+                appointment_order_date=normalized_appointment_order_date,
             )
             row = self._get_row_by_id(connection, row_id)
 
         return self._build_record(row)
+
+    def clear_person(self, row_id: int, vacancy_order_number: str) -> NomenclatureRecord:
+        """Очищає призначену людину для вакансії."""
+
+        normalized_vacancy_order_number = self._normalize_text(
+            vacancy_order_number,
+            "Номер наказу на здачу посади не може бути порожнім.",
+        )
+
+        with self._connect() as connection:
+            self._get_row_by_id(connection, row_id)
+            connection.execute(
+                """
+                UPDATE nomenclature_rows
+                SET card_id = NULL,
+                    surname = '',
+                    name_patronymic = '',
+                    appointment_order_number = '',
+                    appointment_order_date = '',
+                    vacancy_order_number = ?
+                WHERE id = ?
+                """,
+                (normalized_vacancy_order_number, row_id),
+            )
+            row = self._get_row_by_id(connection, row_id)
+
+        return self._build_record(row)
+
+    def list_assignment_history(self) -> list[AssignmentHistoryRecord]:
+        """Повертає журнал усіх призначень на посади."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id,
+                       nomenclature_row_id,
+                       structure_unit_id,
+                       card_id,
+                       job_title,
+                       surname,
+                       name_patronymic,
+                       appointment_order_number,
+                       appointment_order_date
+                FROM nomenclature_assignment_history
+                ORDER BY appointment_order_date DESC, id DESC
+                """
+            ).fetchall()
+
+        return [self._build_assignment_history_record(row) for row in rows]
 
     def save_row_order(self, row_ids: list[int]) -> None:
         """Зберігає явний порядок рядків номенклатури."""
@@ -236,17 +415,31 @@ class NomenclatureRepository:
     def _normalize_optional_text(self, value: str) -> str:
         return " ".join(value.strip().split())
 
+    def _normalize_date_value(self, value: str, empty_message: str) -> str:
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError(empty_message)
+
+        try:
+            return datetime.strptime(normalized_value, "%d.%m.%Y").strftime("%d.%m.%Y")
+        except ValueError as error:
+            raise ValueError("Дата наказу призначення має бути у форматі дд.мм.рррр.") from error
+
     def _get_row_by_id(self, connection: sqlite3.Connection, row_id: int) -> sqlite3.Row:
         row = connection.execute(
             """
             SELECT id,
                    structure_unit_id,
+                     card_id,
                    job_title,
                    nomenclature_number,
                    admission_form,
                    surname,
-                     name_patronymic,
-                     sort_order
+                                     name_patronymic,
+                                     appointment_order_number,
+                                     appointment_order_date,
+                                     vacancy_order_number,
+                                     sort_order
             FROM nomenclature_rows
             WHERE id = ?
             """,
@@ -260,10 +453,65 @@ class NomenclatureRepository:
         return NomenclatureRecord(
             row_id=int(row["id"]),
             structure_unit_id=int(row["structure_unit_id"]),
+            card_id=None if row["card_id"] is None else int(row["card_id"]),
             job_title=row["job_title"],
             nomenclature_number=row["nomenclature_number"],
             admission_form=row["admission_form"],
             surname=row["surname"],
             name_patronymic=row["name_patronymic"],
+            appointment_order_number=row["appointment_order_number"],
+            appointment_order_date=row["appointment_order_date"],
+            vacancy_order_number=row["vacancy_order_number"],
             sort_order=None if row["sort_order"] is None else int(row["sort_order"]),
+        )
+
+    def _build_assignment_history_record(self, row: sqlite3.Row) -> AssignmentHistoryRecord:
+        return AssignmentHistoryRecord(
+            history_id=int(row["id"]),
+            row_id=int(row["nomenclature_row_id"]),
+            structure_unit_id=int(row["structure_unit_id"]),
+            card_id=None if row["card_id"] is None else int(row["card_id"]),
+            job_title=row["job_title"],
+            surname=row["surname"],
+            name_patronymic=row["name_patronymic"],
+            appointment_order_number=row["appointment_order_number"],
+            appointment_order_date=row["appointment_order_date"],
+        )
+
+    def _insert_assignment_history(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        row_id: int,
+        structure_unit_id: int,
+        card_id: int,
+        job_title: str,
+        surname: str,
+        name_patronymic: str,
+        appointment_order_number: str,
+        appointment_order_date: str,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO nomenclature_assignment_history (
+                nomenclature_row_id,
+                structure_unit_id,
+                card_id,
+                job_title,
+                surname,
+                name_patronymic,
+                appointment_order_number,
+                appointment_order_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row_id,
+                structure_unit_id,
+                card_id,
+                job_title,
+                surname,
+                name_patronymic,
+                appointment_order_number,
+                appointment_order_date,
+            ),
         )

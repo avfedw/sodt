@@ -1,10 +1,11 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QMainWindow, QTabWidget
+from .assignment_history import TabAssignmentHistory
 from .cards import TabCards
 from .nomenclature import TabNomenclature
 from .structure import TabStructure
-from locales import get_tab_cards_name, get_tab_nomenclature_name, get_tab_structure_name
+from locales import get_tab_assignment_history_name, get_tab_cards_name, get_tab_nomenclature_name, get_tab_structure_name
 
 
 class MainWindow(QMainWindow):
@@ -32,6 +33,9 @@ class MainWindow(QMainWindow):
 
         nomenclature_tab = TabNomenclature(self)
         self.tabs.addTab(nomenclature_tab, get_tab_nomenclature_name())
+
+        assignment_history_tab = TabAssignmentHistory(self)
+        self.tabs.addTab(assignment_history_tab, get_tab_assignment_history_name())
 
         structure_tab = TabStructure(self)
         self.tabs.addTab(structure_tab, get_tab_structure_name())

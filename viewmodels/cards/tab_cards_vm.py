@@ -92,6 +92,9 @@ class TabCardsViewModel:
                 "access_type_options": ["ОВ", "ЦТ", "Т"],
                 "status": "Status",
                 "status_options": ["granted", "revoked"],
+                "delete_button": "Delete",
+                "delete_confirmation_title": "Delete",
+                "delete_access_confirmation_text": "Delete the selected access record?",
                 "save": "Save",
                 "cancel": "Cancel",
                 "select_card_warning": "Select a card first.",
@@ -115,6 +118,9 @@ class TabCardsViewModel:
                 "admission_status": "Status",
                 "admission_status_options": ["granted", "revoked"],
                 "empty_date": "Not specified",
+                "delete_button": "Delete",
+                "delete_confirmation_title": "Delete",
+                "delete_admission_confirmation_text": "Delete the selected admission record?",
                 "save": "Save",
                 "cancel": "Cancel",
                 "select_card_warning": "Select a card first.",
@@ -160,6 +166,9 @@ class TabCardsViewModel:
                     "destroyed": "The card has been destroyed. Editing is unavailable.",
                 },
                 "empty_date": "Not specified",
+                "delete_button": "Delete",
+                "delete_confirmation_title": "Delete",
+                "delete_card_confirmation_text": "Delete the selected card?",
                 "send_button": "Send",
                 "destroy_button": "Destroy",
                 "return_button": "Mark as returned",
@@ -272,6 +281,9 @@ class TabCardsViewModel:
     def update_access(self, access_id: int, access_date: str, order_number: str, access_type: str, status: str):
         return self.repository.update_access(access_id, access_date, order_number, access_type, status)
 
+    def delete_access(self, access_id: int):
+        self.repository.delete_access(access_id)
+
     def update_card(
         self,
         card_id: int,
@@ -285,6 +297,7 @@ class TabCardsViewModel:
         document_date: str,
         document_target: str,
         user_note: str,
+        has_zalik: bool = False,
     ):
         return self.repository.update_card(
             card_id,
@@ -298,10 +311,17 @@ class TabCardsViewModel:
             document_date,
             document_target,
             user_note,
+            has_zalik,
         )
 
     def update_card_service_note(self, card_id: int, service_note: str):
         return self.repository.update_card_service_note(card_id, service_note)
+
+    def delete_admission(self, admission_id: int):
+        self.repository.delete_admission(admission_id)
+
+    def delete_card(self, card_id: int):
+        self.repository.delete_card(card_id)
 
     def send_card(self, card_id: int, document_number: str, document_date: str, document_target: str):
         return self.repository.send_card(card_id, document_number, document_date, document_target)

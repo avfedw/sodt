@@ -53,6 +53,7 @@ class TabStructureViewModel:
                 "parent": "Parent unit",
                 "no_parent": "No parent unit",
                 "save": "Save",
+                "delete_button": "Delete",
                 "cancel": "Cancel",
                 "delete_confirmation_title": "Delete unit",
                 "delete_confirmation_text": "Delete the selected unit?",

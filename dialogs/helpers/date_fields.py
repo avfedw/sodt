@@ -17,7 +17,7 @@ def create_date_input(parent: QWidget, value: str = "", allow_empty: bool = Fals
     if allow_empty:
         date_input.setMinimumDate(EMPTY_DATE)
         date_input.setSpecialValueText(empty_text)
-        date_input.setDate(EMPTY_DATE)
+        date_input.setDate(QDate.currentDate())
         if value:
             date_input.setDate(QDate.fromString(value, "dd.MM.yyyy"))
     else:
@@ -29,10 +29,6 @@ def create_date_input(parent: QWidget, value: str = "", allow_empty: bool = Fals
 
 def set_empty_date(date_input: QDateEdit, allow_empty: bool = False) -> None:
     """Повертає поле дати у порожній або поточний стан залежно від режиму."""
-
-    if allow_empty:
-        date_input.setDate(EMPTY_DATE)
-        return
 
     date_input.setDate(QDate.currentDate())
 

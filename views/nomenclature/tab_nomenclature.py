@@ -1,6 +1,6 @@
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QDropEvent
-from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QPushButton, QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtGui import QBrush, QColor, QDropEvent
+from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMessageBox, QPushButton, QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from dialogs.nomenclature import NomenclatureCardPickerDialog, NomenclatureRowDialog
 from viewmodels.nomenclature import TabNomenclatureViewModel
@@ -59,7 +59,7 @@ class TabNomenclature(QWidget):
     def __init__(self, parent=None, viewmodel: TabNomenclatureViewModel | None = None):
         super().__init__(parent)
         self.viewmodel = viewmodel or TabNomenclatureViewModel()
-        self._column_widths = [260, 220, 170, 130, 150, 210, 130, 130, 150, 150, 150]
+        self._column_widths = [110, 260, 220, 170, 130, 150, 210, 130, 130, 150, 150, 150, 170, 145]
         self._rows = []
         self._init_ui()
         self._load_rows()
@@ -125,6 +125,7 @@ class TabNomenclature(QWidget):
 
         for row_index, row in enumerate(self._rows):
             values = [
+                row.status,
                 row.short_name_chain,
                 row.job_title,
                 row.nomenclature_number,
@@ -136,12 +137,15 @@ class TabNomenclature(QWidget):
                 row.department_name,
                 row.division_name,
                 row.radio_station_name,
+                row.appointment_order_number,
+                row.appointment_order_date,
             ]
             for column_index, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, row.row_id)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(row_index, column_index, item)
+            self._apply_row_style(row_index, row.highlight_style)
 
         if selected_row_id is not None:
             self._restore_selection(selected_row_id)
@@ -239,20 +243,65 @@ class TabNomenclature(QWidget):
         dialog = NomenclatureCardPickerDialog(
             self.viewmodel.card_picker_texts,
             self.viewmodel.card_options(),
+            current_record=selected_row,
             parent=self.window(),
         )
         if dialog.exec() == 0:
             return
 
         selected_card = dialog.get_selected_card()
+        if dialog.is_vacancy_selected():
+            vacancy_order_number, accepted = QInputDialog.getText(
+                self,
+                self.viewmodel.card_picker_texts["vacancy_order_number_title"],
+                self.viewmodel.card_picker_texts["vacancy_order_number_label"],
+                text=selected_row.vacancy_order_number,
+            )
+            if not accepted:
+                return
+
+            try:
+                self.viewmodel.clear_person_from_row(selected_row.row_id, vacancy_order_number)
+            except ValueError as error:
+                QMessageBox.warning(self, self.viewmodel.validation_error_title, str(error))
+                return
+
+            self._load_rows()
+            return
+
         if selected_card is None:
             QMessageBox.warning(self, self.viewmodel.validation_error_title, self.viewmodel.card_picker_texts["select_card_warning"])
             return
 
         try:
-            self.viewmodel.assign_card_to_row(selected_row.row_id, selected_card.card_id)
+            appointment_order_number, appointment_order_date = dialog.get_assignment_input()
+            self.viewmodel.assign_card_to_row(
+                selected_row.row_id,
+                selected_card.card_id,
+                appointment_order_number,
+                appointment_order_date,
+            )
         except ValueError as error:
             QMessageBox.warning(self, self.viewmodel.validation_error_title, str(error))
             return
 
         self._load_rows()
+
+    def _apply_row_style(self, row_index: int, style_name: str):
+        background_brush = None
+        foreground_brush = None
+
+        if style_name == "warning":
+            background_brush = QBrush(QColor("#ffb3b3"))
+        elif style_name == "critical":
+            background_brush = QBrush(QColor("#000000"))
+            foreground_brush = QBrush(QColor("#ff0000"))
+
+        for column_index in range(self.table.columnCount()):
+            item = self.table.item(row_index, column_index)
+            if item is None:
+                continue
+            if background_brush is not None:
+                item.setBackground(background_brush)
+            if foreground_brush is not None:
+                item.setForeground(foreground_brush)

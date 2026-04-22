@@ -237,6 +237,10 @@ class TabStructure(QWidget):
         if dialog.exec() == 0:
             return
 
+        if dialog.selected_action == "delete":
+            self._delete_selected_unit()
+            return
+
         try:
             self.viewmodel.update_unit(selected_unit.unit_id, *dialog.get_input())
         except ValueError as error:
