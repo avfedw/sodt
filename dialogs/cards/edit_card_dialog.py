@@ -44,6 +44,7 @@ class EditCardDialog(CenteredDialog):
 
         self.number_input = QLineEdit(self.card.number, self)
         self.number_input.setValidator(number_validator)
+        self.number_input.setReadOnly(self.card.is_temporary)
         form_layout.addRow(self.texts["number"], self.number_input)
 
         self.card_date_input = self._create_date_input(self.card.card_date)
@@ -99,7 +100,7 @@ class EditCardDialog(CenteredDialog):
         cancel_button.clicked.connect(self.reject)
 
         action_layout = QHBoxLayout()
-        if self.card.can_edit:
+        if self.card.can_edit and not self.card.is_temporary:
             # Додаткові дії не виконуються окремими кнопками в головному вікні,
             # щоб увесь сценарій роботи з карткою лишався в одному діалозі.
             self.send_button = button_box.addButton(self.texts["send_button"], QDialogButtonBox.ButtonRole.ActionRole)
@@ -113,6 +114,14 @@ class EditCardDialog(CenteredDialog):
             if self.card.can_return:
                 self.return_button = button_box.addButton(self.texts["return_button"], QDialogButtonBox.ButtonRole.ActionRole)
                 self.return_button.clicked.connect(self._open_return_dialog)
+
+        if self.card.can_edit and self.card.is_temporary:
+            self.document_kind_input.setEnabled(False)
+            self.document_number_input.setEnabled(False)
+            self.document_date_input.setEnabled(False)
+            self.document_target_input.setEnabled(False)
+            self.make_permanent_button = button_box.addButton(self.texts["make_permanent_button"], QDialogButtonBox.ButtonRole.ActionRole)
+            self.make_permanent_button.clicked.connect(self._accept_make_permanent)
 
         main_layout.addWidget(button_box)
 
@@ -211,6 +220,11 @@ class EditCardDialog(CenteredDialog):
 
         self.selected_action = "return"
         self.action_payload = dialog.get_input()
+        self.accept()
+
+    def _accept_make_permanent(self):
+        self.selected_action = "make_permanent"
+        self.action_payload = ()
         self.accept()
 
     def get_card_input(self) -> tuple[str, str, str, str, str, str, str, str, str]:

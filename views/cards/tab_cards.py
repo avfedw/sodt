@@ -558,7 +558,8 @@ class TabCards(QWidget):
         if not hasattr(self, "add_admission_button") or not hasattr(self, "edit_admission_button"):
             return
 
-        has_card = self._selected_card() is not None
+        selected_card = self._selected_card()
+        has_card = selected_card is not None and not selected_card.is_temporary
         has_admission = self._selected_admission() is not None
         self.add_admission_button.setEnabled(has_card)
         self.edit_admission_button.setEnabled(has_card and has_admission)
@@ -567,7 +568,8 @@ class TabCards(QWidget):
         if not hasattr(self, "add_access_button") or not hasattr(self, "edit_access_button"):
             return
 
-        has_card = self._selected_card() is not None
+        selected_card = self._selected_card()
+        has_card = selected_card is not None and not selected_card.is_temporary
         has_access = self._selected_access() is not None
         self.add_access_button.setEnabled(has_card)
         self.edit_access_button.setEnabled(has_card and has_access)
@@ -592,10 +594,10 @@ class TabCards(QWidget):
         if dialog.exec() == 0:
             return
 
-        surname, name, patronymic = dialog.get_card_input()
+        surname, name, patronymic, is_temporary = dialog.get_card_input()
 
         try:
-            self.viewmodel.create_card(surname, name, patronymic)
+            self.viewmodel.create_card_with_mode(surname, name, patronymic, is_temporary)
         except ValueError as error:
             # Помилки валідації показуємо безпосередньо користувачу,
             # але не розриваємо загальний цикл роботи вкладки.
@@ -679,6 +681,8 @@ class TabCards(QWidget):
                 self.viewmodel.destroy_card(card.card_id, *dialog.action_payload)
             elif dialog.selected_action == "return":
                 self.viewmodel.return_card(card.card_id, *dialog.action_payload)
+            elif dialog.selected_action == "make_permanent":
+                self.viewmodel.make_card_permanent(card.card_id)
         except ValueError as error:
             QMessageBox.warning(self, self.viewmodel.validation_error_title, str(error))
             return

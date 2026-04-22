@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QAbstractItemView, QDialogButtonBox, QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout
+from PySide6.QtWidgets import QAbstractItemView, QDialogButtonBox, QHeaderView, QLineEdit, QTableWidget, QTableWidgetItem, QVBoxLayout
 
 from ..base_dialog import CenteredDialog
 
@@ -19,6 +19,11 @@ class NomenclatureCardPickerDialog(CenteredDialog):
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
+
+        self.surname_filter_input = QLineEdit(self)
+        self.surname_filter_input.setPlaceholderText(self.texts["surname_filter_placeholder"])
+        self.surname_filter_input.textChanged.connect(self._apply_surname_filter)
+        main_layout.addWidget(self.surname_filter_input)
 
         self.table = QTableWidget(self)
         self.table.setColumnCount(len(self.texts["headers"]))
@@ -51,6 +56,12 @@ class NomenclatureCardPickerDialog(CenteredDialog):
         select_button.clicked.connect(self.accept)
         cancel_button.clicked.connect(self.reject)
         main_layout.addWidget(button_box)
+
+    def _apply_surname_filter(self, value: str):
+        filter_value = value.strip().casefold()
+        for row_index, card in enumerate(self.cards):
+            matches = not filter_value or filter_value in card.surname.casefold()
+            self.table.setRowHidden(row_index, not matches)
 
     def get_selected_card(self):
         selected_items = self.table.selectedItems()

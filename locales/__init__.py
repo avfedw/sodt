@@ -45,6 +45,7 @@ from .nomenclature.tab_nomenclature import edit_button_text_for as _nomenclature
 from .nomenclature.tab_nomenclature import empty_state_for as _nomenclature_empty_state_for
 from .nomenclature.tab_nomenclature import headers_for as _nomenclature_headers_for
 from .nomenclature.tab_nomenclature import name_for as _nomenclature_name_for
+from .nomenclature.tab_nomenclature import refresh_button_text_for as _nomenclature_refresh_button_text_for
 from .nomenclature.tab_nomenclature import validation_error_title_for as _nomenclature_validation_error_title_for
 from .structure.tab_structure import add_button_text_for as _structure_add_button_text_for
 from .structure.tab_structure import add_child_button_text_for as _structure_add_child_button_text_for
@@ -140,6 +141,10 @@ def get_tab_nomenclature_name() -> str:
 
 def get_tab_nomenclature_add_button_text() -> str:
     return _nomenclature_add_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_nomenclature_refresh_button_text() -> str:
+    return _nomenclature_refresh_button_text_for(CURRENT_LOCALE)
 
 
 def get_tab_nomenclature_edit_button_text() -> str:

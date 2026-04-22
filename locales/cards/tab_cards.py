@@ -139,6 +139,7 @@ tab_Cards_add_dialog = {
         "surname": "Прізвище",
         "name": "Ім'я",
         "patronymic": "По батькові",
+        "temporary_card": "Тимчасова картка",
         "save": "Зберегти",
         "cancel": "Скасувати",
     },
@@ -147,6 +148,7 @@ tab_Cards_add_dialog = {
         "surname": "Surname",
         "name": "Name",
         "patronymic": "Patronymic",
+        "temporary_card": "Temporary card",
         "save": "Save",
         "cancel": "Cancel",
     },
@@ -179,6 +181,7 @@ tab_Cards_edit_dialog = {
         "send_button": "Відправити",
         "destroy_button": "Знищити",
         "return_button": "Позначити повернутою",
+        "make_permanent_button": "Зробити постійною",
         "document_kind_options": [
             ("", "Не вказано"),
             ("escort", "Супровід"),
@@ -243,6 +246,7 @@ tab_Cards_edit_dialog = {
         "send_button": "Send",
         "destroy_button": "Destroy",
         "return_button": "Mark as returned",
+        "make_permanent_button": "Make permanent",
         "document_kind_options": [
             ("", "Not specified"),
             ("escort", "Escort"),

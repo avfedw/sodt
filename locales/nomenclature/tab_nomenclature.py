@@ -5,6 +5,7 @@ tab_Nomenclature = {
     "uk": {
         "name": "Номенклатура",
         "add_button": "Додати рядок",
+        "refresh_button": "Оновити",
         "edit_button": "Редагувати",
         "empty_state": "Записи номенклатури ще не додані.",
         "validation_error_title": "Помилка перевірки",
@@ -38,6 +39,7 @@ tab_Nomenclature = {
         "card_picker": {
             "title": "Вибір людини з карток",
             "headers": ["Прізвище", "Ім'я", "По батькові", "Форма", "Статус"],
+            "surname_filter_placeholder": "Фільтр за прізвищем",
             "select": "Вибрати",
             "cancel": "Скасувати",
             "select_card_warning": "Спочатку виберіть людину з карток.",
@@ -46,6 +48,7 @@ tab_Nomenclature = {
     "en": {
         "name": "Nomenclature",
         "add_button": "Add row",
+        "refresh_button": "Refresh",
         "edit_button": "Edit",
         "empty_state": "No nomenclature records have been added yet.",
         "validation_error_title": "Validation error",
@@ -79,6 +82,7 @@ tab_Nomenclature = {
         "card_picker": {
             "title": "Choose person from cards",
             "headers": ["Surname", "Name", "Patronymic", "Form", "Status"],
+            "surname_filter_placeholder": "Filter by surname",
             "select": "Select",
             "cancel": "Cancel",
             "select_card_warning": "Select a person from cards first.",
@@ -97,6 +101,10 @@ def empty_state_for(locale: str) -> str:
 
 def add_button_text_for(locale: str) -> str:
     return tab_Nomenclature.get(locale, tab_Nomenclature["en"])["add_button"]
+
+
+def refresh_button_text_for(locale: str) -> str:
+    return tab_Nomenclature.get(locale, tab_Nomenclature["en"])["refresh_button"]
 
 
 def edit_button_text_for(locale: str) -> str:

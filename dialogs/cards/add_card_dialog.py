@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QDialogButtonBox, QFormLayout, QLineEdit, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QDialogButtonBox, QFormLayout, QLineEdit, QVBoxLayout
 
 from ..base_dialog import CenteredDialog
 from ..helpers import create_ukrainian_name_validator
@@ -34,6 +34,10 @@ class AddCardDialog(CenteredDialog):
 
         main_layout.addLayout(form_layout)
 
+        self.temporary_card_checkbox = QCheckBox(self.texts["temporary_card"], self)
+        self.temporary_card_checkbox.setChecked(False)
+        main_layout.addWidget(self.temporary_card_checkbox)
+
         button_box = QDialogButtonBox(self)
         save_button = button_box.addButton(self.texts["save"], QDialogButtonBox.ButtonRole.AcceptRole)
         cancel_button = button_box.addButton(self.texts["cancel"], QDialogButtonBox.ButtonRole.RejectRole)
@@ -41,11 +45,12 @@ class AddCardDialog(CenteredDialog):
         cancel_button.clicked.connect(self.reject)
         main_layout.addWidget(button_box)
 
-    def get_card_input(self) -> tuple[str, str, str]:
+    def get_card_input(self) -> tuple[str, str, str, bool]:
         # Повертаємо сирі значення без нормалізації:
         # остаточну перевірку та приведення формату виконує репозиторій.
         return (
             self.surname_input.text(),
             self.name_input.text(),
             self.patronymic_input.text(),
+            self.temporary_card_checkbox.isChecked(),
         )

@@ -16,6 +16,7 @@ class NomenclatureRecord:
     admission_form: str
     surname: str
     name_patronymic: str
+    sort_order: int | None
 
 
 class NomenclatureRepository:
@@ -32,6 +33,10 @@ class NomenclatureRepository:
 
     def _ensure_schema(self) -> None:
         with self._connect() as connection:
+            table_exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'nomenclature_rows'"
+            ).fetchone()
+
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS nomenclature_rows (
@@ -42,13 +47,23 @@ class NomenclatureRepository:
                     admission_form TEXT NOT NULL DEFAULT '',
                     surname TEXT NOT NULL DEFAULT '',
                     name_patronymic TEXT NOT NULL DEFAULT '',
+                    sort_order INTEGER NULL,
                     FOREIGN KEY(structure_unit_id) REFERENCES structure_units(id) ON DELETE RESTRICT
                 )
                 """
             )
 
+            if table_exists is None:
+                return
+
+            columns = [row["name"] for row in connection.execute("PRAGMA table_info(nomenclature_rows)").fetchall()]
+            if "sort_order" not in columns:
+                connection.execute(
+                    "ALTER TABLE nomenclature_rows ADD COLUMN sort_order INTEGER NULL"
+                )
+
     def list_rows(self) -> list[NomenclatureRecord]:
-        """Повертає всі записи номенклатури у порядку створення."""
+        """Повертає всі записи номенклатури у збереженому порядку."""
 
         with self._connect() as connection:
             rows = connection.execute(
@@ -59,9 +74,10 @@ class NomenclatureRepository:
                        nomenclature_number,
                        admission_form,
                        surname,
-                       name_patronymic
+                      name_patronymic,
+                      sort_order
                 FROM nomenclature_rows
-                ORDER BY id
+                  ORDER BY sort_order IS NULL, sort_order, id
                 """
             ).fetchall()
 
@@ -96,8 +112,9 @@ class NomenclatureRepository:
                     nomenclature_number,
                     admission_form,
                     surname,
-                    name_patronymic
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    name_patronymic,
+                    sort_order
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL)
                 """,
                 normalized_values,
             )
@@ -162,6 +179,25 @@ class NomenclatureRepository:
 
         return self._build_record(row)
 
+    def save_row_order(self, row_ids: list[int]) -> None:
+        """Зберігає явний порядок рядків номенклатури."""
+
+        normalized_ids = [int(row_id) for row_id in row_ids]
+        if len(normalized_ids) != len(set(normalized_ids)):
+            raise ValueError("Порядок номенклатури містить дублікати.")
+
+        with self._connect() as connection:
+            existing_rows = connection.execute("SELECT id FROM nomenclature_rows ORDER BY id").fetchall()
+            existing_ids = [int(row["id"]) for row in existing_rows]
+            if normalized_ids != existing_ids and set(normalized_ids) != set(existing_ids):
+                raise ValueError("Не вдалося зберегти порядок номенклатури.")
+
+            for sort_order, row_id in enumerate(normalized_ids):
+                connection.execute(
+                    "UPDATE nomenclature_rows SET sort_order = ? WHERE id = ?",
+                    (sort_order, row_id),
+                )
+
     def _normalize_values(
         self,
         structure_unit_id: int,
@@ -209,7 +245,8 @@ class NomenclatureRepository:
                    nomenclature_number,
                    admission_form,
                    surname,
-                   name_patronymic
+                     name_patronymic,
+                     sort_order
             FROM nomenclature_rows
             WHERE id = ?
             """,
@@ -228,4 +265,5 @@ class NomenclatureRepository:
             admission_form=row["admission_form"],
             surname=row["surname"],
             name_patronymic=row["name_patronymic"],
+            sort_order=None if row["sort_order"] is None else int(row["sort_order"]),
         )

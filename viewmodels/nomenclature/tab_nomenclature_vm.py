@@ -32,6 +32,7 @@ class TabNomenclatureViewModel:
         self.structure_repository = structure_repository or StructureRepository()
         self.cards_repository = cards_repository or CardsRepository()
         self._load_texts()
+        self._ensure_initial_row_order()
 
     def _load_texts(self):
         try:
@@ -43,11 +44,13 @@ class TabNomenclatureViewModel:
                 get_tab_nomenclature_empty_state_text,
                 get_tab_nomenclature_headers,
                 get_tab_nomenclature_name,
+                get_tab_nomenclature_refresh_button_text,
                 get_tab_nomenclature_validation_error_title,
             )
 
             self.title = get_tab_nomenclature_name()
             self.add_button_text = get_tab_nomenclature_add_button_text()
+            self.refresh_button_text = get_tab_nomenclature_refresh_button_text()
             self.edit_button_text = get_tab_nomenclature_edit_button_text()
             self.empty_state_text = get_tab_nomenclature_empty_state_text()
             self.headers = get_tab_nomenclature_headers()
@@ -57,6 +60,7 @@ class TabNomenclatureViewModel:
         except Exception:
             self.title = "Nomenclature"
             self.add_button_text = "Add row"
+            self.refresh_button_text = "Refresh"
             self.edit_button_text = "Edit"
             self.empty_state_text = "No nomenclature records have been added yet."
             self.headers = [
@@ -97,8 +101,7 @@ class TabNomenclatureViewModel:
 
     def get_rows(self) -> list[NomenclatureRowView]:
         rows = self.repository.list_rows()
-        units = self.structure_repository.list_units()
-        unit_by_id = {unit.unit_id: unit for unit in units}
+        unit_by_id = self._unit_by_id()
 
         return [self._build_row_view(row, unit_by_id) for row in rows]
 
@@ -111,7 +114,7 @@ class TabNomenclatureViewModel:
         surname: str = "",
         name_patronymic: str = "",
     ):
-        return self.repository.create_row(
+        record = self.repository.create_row(
             structure_unit_id,
             job_title,
             nomenclature_number,
@@ -119,6 +122,8 @@ class TabNomenclatureViewModel:
             surname,
             name_patronymic,
         )
+        self._place_row_by_structure_order(record.row_id)
+        return record
 
     def update_row(
         self,
@@ -130,7 +135,9 @@ class TabNomenclatureViewModel:
         surname: str | None = None,
         name_patronymic: str | None = None,
     ):
-        return self.repository.update_row(
+        previous_rows = self.repository.list_rows()
+        previous_row = next((row for row in previous_rows if row.row_id == row_id), None)
+        record = self.repository.update_row(
             row_id,
             structure_unit_id,
             job_title,
@@ -139,6 +146,12 @@ class TabNomenclatureViewModel:
             surname,
             name_patronymic,
         )
+        if previous_row is not None and previous_row.structure_unit_id != structure_unit_id:
+            self._place_row_by_structure_order(record.row_id)
+        return record
+
+    def save_row_order(self, row_ids: list[int]) -> None:
+        self.repository.save_row_order(row_ids)
 
     def assign_card_to_row(self, row_id: int, card_id: int):
         cards = self.cards_repository.list_cards()
@@ -170,11 +183,21 @@ class TabNomenclatureViewModel:
         self._append_structure_options(options, children_by_parent, unit_by_id, parent_id=None, depth=0)
         return options
 
+    def _ensure_initial_row_order(self) -> None:
+        rows = self.repository.list_rows()
+        if not rows or all(row.sort_order is not None for row in rows):
+            return
+
+        unit_by_id = self._unit_by_id()
+        ordered_rows = self._rows_in_structure_order(rows, unit_by_id)
+        self.repository.save_row_order([row.row_id for row in ordered_rows])
+
     def _append_structure_options(self, options: list[tuple[int, str]], children_by_parent: dict[int | None, list], unit_by_id: dict[int, object], parent_id: int | None, depth: int):
         for unit in children_by_parent.get(parent_id, []):
             prefix = "    " * depth
             path = self._short_name_chain(unit.unit_id, unit_by_id)
-            options.append((unit.unit_id, f"{prefix}{path} | {unit.name}"))
+            label = f"{prefix}{path} | {unit.name}" if path else f"{prefix}{unit.name}"
+            options.append((unit.unit_id, label))
             self._append_structure_options(options, children_by_parent, unit_by_id, unit.unit_id, depth + 1)
 
     def _build_row_view(self, row, unit_by_id: dict[int, object]) -> NomenclatureRowView:
@@ -195,12 +218,54 @@ class TabNomenclatureViewModel:
             radio_station_name=path.get("radio_station", ""),
         )
 
+    def _place_row_by_structure_order(self, row_id: int) -> None:
+        rows = self.repository.list_rows()
+        unit_by_id = self._unit_by_id()
+        row_by_id = {row.row_id: row for row in rows}
+        target_row = row_by_id.get(row_id)
+        if target_row is None:
+            return
+
+        remaining_rows = [row for row in rows if row.row_id != row_id]
+        target_key = self._row_structure_sort_key(target_row, unit_by_id)
+        insert_index = len(remaining_rows)
+        for index, row in enumerate(remaining_rows):
+            if self._row_structure_sort_key(row, unit_by_id) > target_key:
+                insert_index = index
+                break
+
+        remaining_rows.insert(insert_index, target_row)
+        self.repository.save_row_order([row.row_id for row in remaining_rows])
+
+    def _unit_by_id(self) -> dict[int, object]:
+        return {unit.unit_id: unit for unit in self.structure_repository.list_units()}
+
+    def _rows_in_structure_order(self, rows: list, unit_by_id: dict[int, object]) -> list:
+        return sorted(rows, key=lambda row: self._row_structure_sort_key(row, unit_by_id))
+
+    def _row_structure_sort_key(self, row, unit_by_id: dict[int, object]) -> tuple:
+        return self._structure_order_key(row.structure_unit_id, unit_by_id) + (row.row_id,)
+
+    def _structure_order_key(self, unit_id: int, unit_by_id: dict[int, object]) -> tuple[int, ...]:
+        key_parts: list[int] = []
+        path = []
+        current_id = unit_id
+        while current_id is not None and current_id in unit_by_id:
+            unit = unit_by_id[current_id]
+            path.append(unit)
+            current_id = unit.parent_id
+
+        for unit in reversed(path):
+            key_parts.extend((unit.sort_order, unit.unit_id))
+        return tuple(key_parts)
+
     def _short_name_chain(self, unit_id: int, unit_by_id: dict[int, object]) -> str:
         chain: list[str] = []
         current_id = unit_id
         while current_id is not None and current_id in unit_by_id:
             unit = unit_by_id[current_id]
-            chain.append((unit.short_name or unit.name).strip())
+            if unit.unit_type != "section":
+                chain.append((unit.short_name or unit.name).strip())
             current_id = unit.parent_id
         return " ".join(chain)
 

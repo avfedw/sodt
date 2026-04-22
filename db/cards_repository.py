@@ -16,6 +16,26 @@ _CARD_NUMBER_PATTERN = re.compile(r"^[0-9]+$")
 _DOCUMENT_KINDS = {"", "escort", "act", "planned_cancellation", "planned_destruction"}
 _WORKFLOW_STATUSES = {"", "на скасування", "на знищення", "знищено", "відправлено"}
 _LIFECYCLE_STATES = {"", "sent", "destroyed"}
+_LEGACY_CARD_COLUMNS = [
+    "id",
+    "letter",
+    "number",
+    "card_date",
+    "surname",
+    "name",
+    "patronymic",
+    "form",
+    "workflow_status",
+    "document_kind",
+    "document_number",
+    "document_date",
+    "document_target",
+    "service_note",
+    "user_note",
+    "relation_group_id",
+    "is_current",
+    "lifecycle_state",
+]
 _EXPECTED_CARD_COLUMNS = [
     "id",
     "letter",
@@ -35,6 +55,7 @@ _EXPECTED_CARD_COLUMNS = [
     "relation_group_id",
     "is_current",
     "lifecycle_state",
+    "is_temporary",
 ]
 _EXPECTED_ADMISSION_COLUMNS = [
     "id",
@@ -96,6 +117,7 @@ class CardRecord:
     relation_group_id: int
     is_current: bool
     lifecycle_state: str
+    is_temporary: bool = False
     derived_workflow_status: str = ""
     has_active_admission: bool = False
     has_active_access: bool = False
@@ -152,7 +174,7 @@ class CardRecord:
     def can_return(self) -> bool:
         """Ознака, що картку можна позначити повернутою."""
 
-        return self.lifecycle_state == "sent"
+        return not self.is_temporary and self.lifecycle_state == "sent"
 
     @property
     def inactive_reason(self) -> str:
@@ -265,6 +287,11 @@ class CardsRepository:
                     row["name"]
                     for row in connection.execute("PRAGMA table_info(cards)").fetchall()
                 ]
+                if columns == _LEGACY_CARD_COLUMNS:
+                    connection.execute(
+                        "ALTER TABLE cards ADD COLUMN is_temporary INTEGER NOT NULL DEFAULT 0"
+                    )
+                    columns.append("is_temporary")
                 # Для локального десктопного застосунку тут простіше перестворити таблицю,
                 # ніж підтримувати складні міграції для кожної проміжної версії схеми.
                 if columns != _EXPECTED_CARD_COLUMNS:
@@ -290,7 +317,8 @@ class CardsRepository:
                     user_note TEXT NOT NULL DEFAULT '',
                     relation_group_id INTEGER NOT NULL DEFAULT 0,
                     is_current INTEGER NOT NULL DEFAULT 1,
-                    lifecycle_state TEXT NOT NULL DEFAULT ''
+                    lifecycle_state TEXT NOT NULL DEFAULT '',
+                    is_temporary INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -391,69 +419,97 @@ class CardsRepository:
             for row in rows
         ]
 
-    def create_card(self, surname: str, name: str, patronymic: str) -> CardRecord:
-        """Створює нову картку з автоматичним присвоєнням літери та номера."""
+    def create_card(self, surname: str, name: str, patronymic: str, is_temporary: bool = False) -> CardRecord:
+        """Створює нову звичайну або тимчасову картку."""
 
         normalized_surname = self._normalize_name_part(surname, "Прізвище")
         normalized_name = self._normalize_name_part(name, "Ім'я")
         normalized_patronymic = self._normalize_name_part(patronymic, "По батькові")
-        letter = self._build_letter(normalized_surname)
 
         with self._connect() as connection:
-            # Номер у межах літери видається послідовно, щоб користувачеві
-            # не потрібно було вручну шукати наступне вільне значення.
-            next_number = self._get_next_number_for_letter(connection, letter)
-            cursor = connection.execute(
-                """
-                INSERT INTO cards (
-                    letter,
-                    number,
-                    card_date,
-                    surname,
-                    name,
-                    patronymic,
-                    form,
-                    workflow_status,
-                    document_kind,
-                    document_number,
-                    document_date,
-                    document_target,
-                    service_note,
-                    user_note,
-                    relation_group_id,
-                    is_current,
-                    lifecycle_state
+            if is_temporary:
+                row = self._insert_card(
+                    connection,
+                    letter="",
+                    number=self._get_next_temporary_number(connection),
+                    card_date=date.today().strftime("%d.%m.%Y"),
+                    surname=normalized_surname,
+                    name=normalized_name,
+                    patronymic=normalized_patronymic,
+                    form="",
+                    document_kind="",
+                    document_number="",
+                    document_date="",
+                    document_target="",
+                    service_note="",
+                    user_note="",
+                    relation_group_id=0,
+                    is_current=1,
+                    lifecycle_state="",
+                    is_temporary=1,
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    letter,
-                    str(next_number),
-                    date.today().strftime("%d.%m.%Y"),
-                    normalized_surname,
-                    normalized_name,
-                    normalized_patronymic,
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    0,
-                    1,
-                    "",
-                ),
+            else:
+                letter = self._build_letter(normalized_surname)
+                row = self._insert_card(
+                    connection,
+                    letter=letter,
+                    number=str(self._get_next_number_for_letter(connection, letter)),
+                    card_date=date.today().strftime("%d.%m.%Y"),
+                    surname=normalized_surname,
+                    name=normalized_name,
+                    patronymic=normalized_patronymic,
+                    form="",
+                    document_kind="",
+                    document_number="",
+                    document_date="",
+                    document_target="",
+                    service_note="",
+                    user_note="",
+                    relation_group_id=0,
+                    is_current=1,
+                    lifecycle_state="",
+                    is_temporary=0,
+                )
+
+        return self._build_card_record_from_row(row)
+
+    def make_card_permanent(self, card_id: int) -> CardRecord:
+        """Перетворює тимчасову картку на звичайну й видаляє тимчасовий запис."""
+
+        with self._connect() as connection:
+            current_row = connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+            if current_row is None:
+                raise ValueError("Картку для перетворення не знайдено.")
+            if not bool(current_row["is_temporary"]):
+                raise ValueError("Перетворити на постійну можна лише тимчасову картку.")
+            if current_row["lifecycle_state"]:
+                raise ValueError("Тимчасова картка має бути активною для перетворення.")
+
+            normalized_surname = self._normalize_name_part(current_row["surname"], "Прізвище")
+            normalized_name = self._normalize_name_part(current_row["name"], "Ім'я")
+            normalized_patronymic = self._normalize_name_part(current_row["patronymic"], "По батькові")
+            letter = self._build_letter(normalized_surname)
+            row = self._insert_card(
+                connection,
+                letter=letter,
+                number=str(self._get_next_number_for_letter(connection, letter)),
+                card_date=current_row["card_date"],
+                surname=normalized_surname,
+                name=normalized_name,
+                patronymic=normalized_patronymic,
+                form="",
+                document_kind="",
+                document_number="",
+                document_date="",
+                document_target="",
+                service_note="",
+                user_note=current_row["user_note"],
+                relation_group_id=0,
+                is_current=1,
+                lifecycle_state="",
+                is_temporary=0,
             )
-            card_id = cursor.lastrowid
-            connection.execute(
-                "UPDATE cards SET relation_group_id = ? WHERE id = ?",
-                (card_id, card_id),
-            )
-            # Перша картка в групі пов'язується сама з собою,
-            # а надалі цей ключ використовується для історії змін прізвища та відправлень.
-            row = connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+            connection.execute("DELETE FROM cards WHERE id = ?", (card_id,))
 
         return self._build_card_record_from_row(row)
 
@@ -480,7 +536,8 @@ class CardsRepository:
         )
 
         with self._connect() as connection:
-            self._ensure_card_exists(connection, card_id)
+            card_row = self._get_card_row(connection, card_id)
+            self._ensure_card_allows_security_records(card_row)
             cursor = connection.execute(
                 """
                 INSERT INTO accesses (card_id, access_date, order_number, access_type, status)
@@ -512,6 +569,8 @@ class CardsRepository:
             ).fetchone()
             if row is None:
                 raise ValueError("Запис доступу не знайдено.")
+            card_row = self._get_card_row(connection, row["card_id"])
+            self._ensure_card_allows_security_records(card_row)
 
             connection.execute(
                 """
@@ -565,7 +624,8 @@ class CardsRepository:
         )
 
         with self._connect() as connection:
-            self._ensure_card_exists(connection, card_id)
+            card_row = self._get_card_row(connection, card_id)
+            self._ensure_card_allows_security_records(card_row)
             cursor = connection.execute(
                 """
                 INSERT INTO admissions (
@@ -623,6 +683,8 @@ class CardsRepository:
             ).fetchone()
             if row is None:
                 raise ValueError("Запис розшифровки не знайдено.")
+            card_row = self._get_card_row(connection, row["card_id"])
+            self._ensure_card_allows_security_records(card_row)
 
             connection.execute(
                 """
@@ -665,7 +727,6 @@ class CardsRepository:
         normalized_surname = self._normalize_name_part(surname, "Прізвище")
         normalized_name = self._normalize_name_part(name, "Ім'я")
         normalized_patronymic = self._normalize_name_part(patronymic, "По батькові")
-        normalized_number = self._normalize_card_number(number)
         normalized_card_date = self._normalize_date_value(card_date, "Дата картки", allow_empty=False)
         normalized_document_kind = self._normalize_document_kind(document_kind)
         normalized_document_number, normalized_document_date, normalized_document_target = self._normalize_document_fields(
@@ -675,7 +736,6 @@ class CardsRepository:
             document_target,
         )
         normalized_user_note = self._normalize_note_part(user_note)
-        new_letter = self._build_letter(normalized_surname)
 
         with self._connect() as connection:
             current_row = connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
@@ -683,6 +743,35 @@ class CardsRepository:
                 raise ValueError("Картку для редагування не знайдено.")
 
             self._ensure_card_is_editable(current_row)
+
+            if bool(current_row["is_temporary"]):
+                connection.execute(
+                    """
+                    UPDATE cards
+                    SET card_date = ?,
+                        surname = ?,
+                        name = ?,
+                        patronymic = ?,
+                        document_kind = '',
+                        document_number = '',
+                        document_date = '',
+                        document_target = '',
+                        user_note = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        normalized_card_date,
+                        normalized_surname,
+                        normalized_name,
+                        normalized_patronymic,
+                        normalized_user_note,
+                        card_id,
+                    ),
+                )
+                return self._get_card_record_by_id(connection, card_id)
+
+            normalized_number = self._normalize_card_number(number)
+            new_letter = self._build_letter(normalized_surname)
 
             old_letter = current_row["letter"]
             old_number = current_row["number"]
@@ -844,6 +933,7 @@ class CardsRepository:
                 raise ValueError("Картку для відправлення не знайдено.")
 
             self._ensure_card_is_editable(current_row)
+            self._ensure_card_allows_workflow_actions(current_row)
             relation_group_id = current_row["relation_group_id"] or current_row["id"]
             rows = connection.execute(
                 "SELECT id, service_note, user_note FROM cards WHERE relation_group_id = ?",
@@ -897,6 +987,7 @@ class CardsRepository:
                 raise ValueError("Картку для знищення не знайдено.")
 
             self._ensure_card_is_editable(current_row)
+            self._ensure_card_allows_workflow_actions(current_row)
             destroy_note = self._build_destroy_note(normalized_number, normalized_date)
             updated_service_note = self._append_service_note(current_row["service_note"], destroy_note)
             connection.execute(
@@ -1032,6 +1123,14 @@ class CardsRepository:
         if row["lifecycle_state"] == "destroyed":
             raise ValueError("Знищену картку не можна редагувати.")
 
+    def _ensure_card_allows_workflow_actions(self, row: sqlite3.Row) -> None:
+        if bool(row["is_temporary"]):
+            raise ValueError("Тимчасову картку не можна відправляти або знищувати.")
+
+    def _ensure_card_allows_security_records(self, row: sqlite3.Row) -> None:
+        if bool(row["is_temporary"]):
+            raise ValueError("Для тимчасової картки не можна додавати допуск або доступ.")
+
     def _normalize_name_part(self, value: str, field_name: str) -> str:
         # Тут не лише обрізаємо пробіли, а й стискаємо повтори,
         # щоб у базу не потрапляли візуально однакові, але різні рядки.
@@ -1064,6 +1163,20 @@ class CardsRepository:
             raise ValueError("Поле «Номер у літері» має містити лише цифри.")
 
         return str(int(normalized_value))
+
+    def _get_next_temporary_number(self, connection: sqlite3.Connection) -> str:
+        rows = connection.execute(
+            "SELECT number FROM cards WHERE is_temporary = 1 ORDER BY id"
+        ).fetchall()
+        next_number = 1
+        for row in rows:
+            number_value = str(row["number"])
+            if not number_value.startswith("F"):
+                continue
+            suffix = number_value[1:]
+            if suffix.isdigit():
+                next_number = max(next_number, int(suffix) + 1)
+        return f"F{next_number}"
 
     def _normalize_date_value(self, value: str, field_name: str, allow_empty: bool) -> str:
         normalized_value = value.strip()
@@ -1302,12 +1415,93 @@ class CardsRepository:
             return f"{letter}-{number}"
         return letter or number
 
+    def _get_card_row(self, connection: sqlite3.Connection, card_id: int) -> sqlite3.Row:
+        row = connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+        if row is None:
+            raise ValueError("Картку не знайдено.")
+        return row
+
     def _ensure_card_exists(self, connection: sqlite3.Connection, card_id: int) -> None:
         """Підтверджує, що картка існує, перш ніж працювати з її підлеглими записами."""
 
         row = connection.execute("SELECT 1 FROM cards WHERE id = ?", (card_id,)).fetchone()
         if row is None:
             raise ValueError("Картку не знайдено.")
+
+    def _insert_card(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        letter: str,
+        number: str,
+        card_date: str,
+        surname: str,
+        name: str,
+        patronymic: str,
+        form: str,
+        document_kind: str,
+        document_number: str,
+        document_date: str,
+        document_target: str,
+        service_note: str,
+        user_note: str,
+        relation_group_id: int,
+        is_current: int,
+        lifecycle_state: str,
+        is_temporary: int,
+    ) -> sqlite3.Row:
+        cursor = connection.execute(
+            """
+            INSERT INTO cards (
+                letter,
+                number,
+                card_date,
+                surname,
+                name,
+                patronymic,
+                form,
+                workflow_status,
+                document_kind,
+                document_number,
+                document_date,
+                document_target,
+                service_note,
+                user_note,
+                relation_group_id,
+                is_current,
+                lifecycle_state,
+                is_temporary
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                letter,
+                number,
+                card_date,
+                surname,
+                name,
+                patronymic,
+                form,
+                "",
+                document_kind,
+                document_number,
+                document_date,
+                document_target,
+                service_note,
+                user_note,
+                relation_group_id,
+                is_current,
+                lifecycle_state,
+                is_temporary,
+            ),
+        )
+        card_id = cursor.lastrowid
+        final_relation_group_id = relation_group_id or card_id
+        connection.execute(
+            "UPDATE cards SET relation_group_id = ? WHERE id = ?",
+            (final_relation_group_id, card_id),
+        )
+        return connection.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
 
     def _build_card_record_from_row(
         self,
@@ -1345,6 +1539,7 @@ class CardsRepository:
             relation_group_id=row["relation_group_id"],
             is_current=bool(row["is_current"]),
             lifecycle_state=row["lifecycle_state"],
+            is_temporary=bool(row["is_temporary"]),
             has_active_admission=resolved_admission_state.has_active,
             has_active_access=resolved_access_state.has_active,
             access_revoked_after_grant=resolved_access_state.revoked_after_grant,

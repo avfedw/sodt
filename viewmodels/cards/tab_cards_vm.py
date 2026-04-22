@@ -135,6 +135,7 @@ class TabCardsViewModel:
                 "surname": "Surname",
                 "name": "Name",
                 "patronymic": "Patronymic",
+                "temporary_card": "Temporary card",
                 "save": "Save",
                 "cancel": "Cancel",
             },
@@ -162,6 +163,7 @@ class TabCardsViewModel:
                 "send_button": "Send",
                 "destroy_button": "Destroy",
                 "return_button": "Mark as returned",
+                "make_permanent_button": "Make permanent",
                 "document_kind_options": [
                     ("", "Not specified"),
                     ("escort", "Escort"),
@@ -233,6 +235,9 @@ class TabCardsViewModel:
 
     def create_card(self, surname: str, name: str, patronymic: str):
         return self.repository.create_card(surname, name, patronymic)
+
+    def create_card_with_mode(self, surname: str, name: str, patronymic: str, is_temporary: bool):
+        return self.repository.create_card(surname, name, patronymic, is_temporary=is_temporary)
 
     def create_admission(self, card_id: int, escort_number: str, escort_date: str, admission_form: str):
         return self.repository.create_admission(card_id, escort_number, escort_date, admission_form)
@@ -306,5 +311,8 @@ class TabCardsViewModel:
 
     def return_card(self, card_id: int, document_number: str, document_date: str, document_target: str):
         return self.repository.return_card(card_id, document_number, document_date, document_target)
+
+    def make_card_permanent(self, card_id: int):
+        return self.repository.make_card_permanent(card_id)
 
 
