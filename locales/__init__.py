@@ -19,7 +19,6 @@ def set_locale(lang: str) -> None:
         raise ValueError(f"Unsupported locale: {lang}")
 
 
-# Допоміжні функції вкладок імпортуються ліниво, щоб цей файл залишався мінімальним.
 from .cards.tab_cards import add_button_text_for as _cards_add_button_text_for
 from .cards.tab_cards import cards_visibility_filter_options_for as _cards_visibility_filter_options_for
 from .cards.tab_cards import access_add_button_text_for as _cards_access_add_button_text_for
@@ -38,6 +37,17 @@ from .cards.tab_cards import get_tab_cards_table_headers as _cards_table_headers
 from .cards.tab_cards import get_tab_cards_admission_headers as _cards_admission_headers
 from .cards.tab_cards import name_for as _cards_name_for
 from .cards.tab_cards import validation_error_title_for as _cards_validation_error_title_for
+from .certificate14.tab_certificate14 import add_button_text_for as _certificate14_add_button_text_for
+from .certificate14.tab_certificate14 import card_picker_texts_for as _certificate14_card_picker_texts_for
+from .certificate14.tab_certificate14 import dialog_texts_for as _certificate14_dialog_texts_for
+from .certificate14.tab_certificate14 import edit_button_text_for as _certificate14_edit_button_text_for
+from .certificate14.tab_certificate14 import empty_state_for as _certificate14_empty_state_for
+from .certificate14.tab_certificate14 import export_button_text_for as _certificate14_export_button_text_for
+from .certificate14.tab_certificate14 import export_dialog_texts_for as _certificate14_export_dialog_texts_for
+from .certificate14.tab_certificate14 import headers_for as _certificate14_headers_for
+from .certificate14.tab_certificate14 import name_for as _certificate14_name_for
+from .certificate14.tab_certificate14 import refresh_button_text_for as _certificate14_refresh_button_text_for
+from .certificate14.tab_certificate14 import validation_error_title_for as _certificate14_validation_error_title_for
 from .assignment_history.tab_assignment_history import empty_state_for as _assignment_history_empty_state_for
 from .assignment_history.tab_assignment_history import headers_for as _assignment_history_headers_for
 from .assignment_history.tab_assignment_history import name_for as _assignment_history_name_for
@@ -63,6 +73,13 @@ from .structure.tab_structure import headers_for as _structure_headers_for
 from .structure.tab_structure import name_for as _structure_name_for
 from .structure.tab_structure import type_labels_for as _structure_type_labels_for
 from .structure.tab_structure import validation_error_title_for as _structure_validation_error_title_for
+from .settings.tab_settings import description_for as _settings_description_for
+from .settings.tab_settings import export_button_text_for as _settings_export_button_text_for
+from .settings.tab_settings import file_dialog_texts_for as _settings_file_dialog_texts_for
+from .settings.tab_settings import import_button_text_for as _settings_import_button_text_for
+from .settings.tab_settings import messages_for as _settings_messages_for
+from .settings.tab_settings import name_for as _settings_name_for
+from .settings.tab_settings import title_for as _settings_title_for
 
 
 def get_tab_cards_name() -> str:
@@ -112,8 +129,6 @@ def get_tab_cards_access_name() -> str:
 
 
 def get_tab_cards_access_dialog_texts() -> dict:
-    # Діалогам повертаємо вже готовий набір підписів і службових повідомлень,
-    # щоб вони не залежали від механіки вибору поточної мови.
     return _cards_access_dialog_texts_for(CURRENT_LOCALE)
 
 
@@ -139,6 +154,50 @@ def get_tab_cards_edit_dialog_texts() -> dict:
 
 def get_tab_cards_validation_error_title() -> str:
     return _cards_validation_error_title_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_name() -> str:
+    return _certificate14_name_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_add_button_text() -> str:
+    return _certificate14_add_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_refresh_button_text() -> str:
+    return _certificate14_refresh_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_edit_button_text() -> str:
+    return _certificate14_edit_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_export_button_text() -> str:
+    return _certificate14_export_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_empty_state_text() -> str:
+    return _certificate14_empty_state_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_headers() -> list[str]:
+    return _certificate14_headers_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_validation_error_title() -> str:
+    return _certificate14_validation_error_title_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_dialog_texts() -> dict:
+    return _certificate14_dialog_texts_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_card_picker_texts() -> dict:
+    return _certificate14_card_picker_texts_for(CURRENT_LOCALE)
+
+
+def get_tab_certificate14_export_dialog_texts() -> dict:
+    return _certificate14_export_dialog_texts_for(CURRENT_LOCALE)
 
 
 def get_tab_assignment_history_name() -> str:
@@ -231,6 +290,34 @@ def get_tab_structure_headers() -> list[str]:
 
 def get_tab_structure_validation_error_title() -> str:
     return _structure_validation_error_title_for(CURRENT_LOCALE)
+
+
+def get_tab_settings_name() -> str:
+    return _settings_name_for(CURRENT_LOCALE)
+
+
+def get_tab_settings_title_text() -> str:
+    return _settings_title_for(CURRENT_LOCALE)
+
+
+def get_tab_settings_description_text() -> str:
+    return _settings_description_for(CURRENT_LOCALE)
+
+
+def get_tab_settings_export_button_text() -> str:
+    return _settings_export_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_settings_import_button_text() -> str:
+    return _settings_import_button_text_for(CURRENT_LOCALE)
+
+
+def get_tab_settings_file_dialog_texts() -> dict:
+    return _settings_file_dialog_texts_for(CURRENT_LOCALE)
+
+
+def get_tab_settings_messages() -> dict:
+    return _settings_messages_for(CURRENT_LOCALE)
 
 
 def get_tab_structure_dialog_texts() -> dict:

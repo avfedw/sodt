@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 import re
-import sqlite3
 
 from .cards_state import AdmissionState, AccessState, build_access_state_by_card_id, build_admission_state_by_card_id, derive_workflow_status
+from .database import connection_scope, get_database_path, sqlite3
 
 
 _UKRAINIAN_LETTERS = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯабвгґдеєжзиіїйклмнопрстуфхцчшщьюя"
@@ -266,15 +266,13 @@ class CardsRepository:
     def __init__(self, db_path: Path | None = None):
         # За замовчуванням працюємо з основною SQLite-базою проєкту,
         # але шлях можна підмінити в тестах або тимчасових сценаріях перевірки.
-        self.db_path = db_path or Path(__file__).resolve().parent / "sodt.sqlite3"
+        self.db_path = get_database_path(db_path)
         self._ensure_schema()
 
-    def _connect(self) -> sqlite3.Connection:
-        """Створює з'єднання з Row-рядками для доступу до полів за назвами."""
+    def _connect(self):
+        """Повертає контекст з'єднання до SQLCipher-бази із гарантованим закриттям."""
 
-        connection = sqlite3.connect(self.db_path)
-        connection.row_factory = sqlite3.Row
-        return connection
+        return connection_scope(self.db_path)
 
     def _ensure_schema(self) -> None:
         """Перевіряє структуру таблиць і за потреби створює або оновлює її."""

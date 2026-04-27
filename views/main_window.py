@@ -3,9 +3,11 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QMainWindow, QTabWidget
 from .assignment_history import TabAssignmentHistory
 from .cards import TabCards
+from .certificate14 import TabCertificate14
 from .nomenclature import TabNomenclature
+from .settings import TabSettings
 from .structure import TabStructure
-from locales import get_tab_assignment_history_name, get_tab_cards_name, get_tab_nomenclature_name, get_tab_structure_name
+from locales import get_tab_assignment_history_name, get_tab_cards_name, get_tab_certificate14_name, get_tab_nomenclature_name, get_tab_settings_name, get_tab_structure_name
 
 
 class MainWindow(QMainWindow):
@@ -39,6 +41,12 @@ class MainWindow(QMainWindow):
 
         structure_tab = TabStructure(self)
         self.tabs.addTab(structure_tab, get_tab_structure_name())
+
+        certificate14_tab = TabCertificate14(self)
+        self.tabs.addTab(certificate14_tab, get_tab_certificate14_name())
+
+        settings_tab = TabSettings(self)
+        self.tabs.addTab(settings_tab, get_tab_settings_name())
 
     def _configure_window(self):
         """Налаштовує стартову геометрію головного вікна відносно поточного екрана."""

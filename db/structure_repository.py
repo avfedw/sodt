@@ -2,7 +2,8 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-import sqlite3
+
+from .database import connection_scope, get_database_path, sqlite3
 
 
 _UNIT_TYPE_ORDER = [
@@ -33,13 +34,11 @@ class StructureRepository:
     """Репозиторій для збереження та читання структури підприємства."""
 
     def __init__(self, db_path: Path | None = None):
-        self.db_path = db_path or Path(__file__).resolve().parent / "sodt.sqlite3"
+        self.db_path = get_database_path(db_path)
         self._ensure_schema()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path)
-        connection.row_factory = sqlite3.Row
-        return connection
+    def _connect(self):
+        return connection_scope(self.db_path)
 
     def _ensure_schema(self) -> None:
         with self._connect() as connection:
